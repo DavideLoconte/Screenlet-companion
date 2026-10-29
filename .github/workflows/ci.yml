@@ -1,0 +1,28 @@
+name: CI
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+jobs:
+  android:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/cache@v4
+        with:
+          path: /home/runner/.cache/screenlet-gradle
+          key: gradle-${{ hashFiles('**/*.gradle.kts', 'gradle/verification-metadata.xml') }}
+      - name: Build environment
+        run: docker build -q -t screenlet-android - < Dockerfile.android
+      - name: Tests, lint, debug APK
+        env:
+          SCREENLET_IMAGE_BUILT: "1"
+          SCREENLET_GRADLE_CACHE: /home/runner/.cache/screenlet-gradle
+        run: |
+          mkdir -p "$SCREENLET_GRADLE_CACHE"
+          tools/android-docker.sh testDebugUnitTest lint assembleDebug
+      - uses: actions/upload-artifact@v4
+        with:
+          name: screenlet-companion-debug
+          path: app/build/outputs/apk/debug/app-debug.apk

@@ -1,0 +1,33 @@
+package io.github.davideloconte.screenlet
+
+import android.content.Context
+
+/** The app's own settings. */
+object Options {
+    private const val PREFS = "options"
+
+    /** Ready for the PC all the time (and after a restart), or only for a
+     * while after the app was opened. */
+    fun alwaysReady(context: Context) =
+        context.getSharedPreferences(PREFS, Context.MODE_PRIVATE).getBoolean("always", true)
+
+    fun setAlwaysReady(context: Context, on: Boolean) =
+        context.getSharedPreferences(PREFS, Context.MODE_PRIVATE).edit().putBoolean("always", on).apply()
+}
+
+/** PCs the user paired with: certificate fingerprint -> name. */
+object Paired {
+    private const val PREFS = "paired"
+
+    fun all(context: Context): Map<String, String> =
+        context.getSharedPreferences(PREFS, Context.MODE_PRIVATE).all.mapValues { it.value as String }
+
+    fun contains(context: Context, fingerprint: String) =
+        context.getSharedPreferences(PREFS, Context.MODE_PRIVATE).contains(fingerprint)
+
+    fun add(context: Context, fingerprint: String, name: String) =
+        context.getSharedPreferences(PREFS, Context.MODE_PRIVATE).edit().putString(fingerprint, name).apply()
+
+    fun forget(context: Context, fingerprint: String) =
+        context.getSharedPreferences(PREFS, Context.MODE_PRIVATE).edit().remove(fingerprint).apply()
+}

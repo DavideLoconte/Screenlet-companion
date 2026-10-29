@@ -1,0 +1,34 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="app_name" translatable="false">Screenlet</string>
+    <string name="version" translatable="false">Screenlet %1$s</string>
+    <string name="cancel">Cancel</string>
+    <string name="channel_service">Ready for the computer</string>
+    <string name="channel_ask">Pairing requests</string>
+    <string name="ready_title">Screenlet is ready</string>
+    <string name="ready_text">Your computer can use this screen</string>
+    <string name="ready">Ready</string>
+    <string name="status_ready">Plug in the cable, or be on the same Wi-Fi: the computer’s screen appears here when you start it there.</string>
+    <string name="not_paired_title">Not paired yet</string>
+    <string name="status_unpaired">On your computer, open Screenlet and choose “%1$s”.</string>
+    <string name="pair_title">Pair with %1$s?</string>
+    <string name="pair_message">Check that the computer shows the same code: %1$s</string>
+    <string name="pair_compare">Pair only if the computer shows this same code, and confirm there too:</string>
+    <string name="pair">Pair</string>
+    <string name="display_title">Showing %1$s</string>
+    <string name="display_text">Tap to go back to it</string>
+    <string name="display_stop">Stop</string>
+    <string name="heading_ready">Ready in the background</string>
+    <string name="always_ready">Always ready</string>
+    <string name="always_on">Also after a restart. It only listens: next to no battery.</string>
+    <string name="always_off">Off: the computer reaches this tablet only for 10 minutes after you open Screenlet.</string>
+    <string name="heading_paired">Paired computers</string>
+    <string name="paired_none_title">None yet</string>
+    <string name="paired_none">On your computer: Screenlet → Pair.</string>
+    <string name="forget">Forget</string>
+    <string name="forget_title">Forget %1$s?</string>
+    <string name="forget_detail">To use it again, you will compare a code once more.</string>
+    <string name="onboarding_title">Let Screenlet start by itself</string>
+    <string name="onboarding_text">So the pairing code and the computer’s screen appear on their own, and the computer finds this tablet even with no Wi-Fi network, allow notifications, nearby devices and “Display over other apps”.</string>
+    <string name="overlay_allow">Allow</string>
+</resources>

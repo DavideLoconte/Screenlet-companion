@@ -1,0 +1,32 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <!-- Material 3 Expressive, in the colours Android takes from the wallpaper. -->
+    <style name="Theme.Screenlet" parent="Theme.Material3Expressive.DynamicColors.DayNight.NoActionBar">
+        <item name="android:windowLightStatusBar">@bool/light_theme</item>
+        <item name="android:windowLightNavigationBar">@bool/light_theme</item>
+        <item name="android:windowLayoutInDisplayCutoutMode">always</item>
+        <item name="screenletTextButtonStyle">@style/Widget.Material3Expressive.Button.TextButton</item>
+    </style>
+
+    <!-- The computer's screen: the whole of this one, black behind. -->
+    <style name="Theme.Screenlet.Display">
+        <item name="android:windowFullscreen">true</item>
+        <item name="android:windowBackground">@android:color/black</item>
+    </style>
+
+    <!-- Nothing at all, for an instant (UsbActivity). -->
+    <style name="Theme.Screenlet.Invisible" parent="Theme.Screenlet">
+        <item name="android:windowIsTranslucent">true</item>
+        <item name="android:windowBackground">@android:color/transparent</item>
+        <item name="android:windowNoTitle">true</item>
+        <item name="android:windowAnimationStyle">@null</item>
+        <item name="android:backgroundDimEnabled">false</item>
+    </style>
+
+    <!-- The pairing question, over whatever is on screen. -->
+    <style name="Theme.Screenlet.Pair" parent="Theme.Material3Expressive.DayNight.Dialog">
+        <item name="windowNoTitle">true</item>
+        <item name="android:windowBackground">@android:color/transparent</item>
+        <item name="screenletTextButtonStyle">@style/Widget.Material3Expressive.Button.TextButton</item>
+    </style>
+</resources>

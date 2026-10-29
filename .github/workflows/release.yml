@@ -1,0 +1,38 @@
+name: Release
+on:
+  push:
+    tags: ["v*"]
+
+permissions:
+  contents: write
+
+jobs:
+  apk:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+      - name: The tag is the app's version
+        run: |
+          version=$(sed -n 's/^val appVersion = "\(.*\)"/\1/p' app/build.gradle.kts)
+          test "v$version" = "$GITHUB_REF_NAME" || { echo "tag $GITHUB_REF_NAME, app $version"; exit 1; }
+      - name: Build environment
+        run: docker build -q -t screenlet-android - < Dockerfile.android
+      - name: Signed APK
+        env:
+          SCREENLET_IMAGE_BUILT: "1"
+          KEYSTORE_BASE64: ${{ secrets.SCREENLET_KEYSTORE_BASE64 }}
+          SCREENLET_KEYSTORE_PASSWORD: ${{ secrets.SCREENLET_KEYSTORE_PASSWORD }}
+          SCREENLET_KEY_ALIAS: ${{ secrets.SCREENLET_KEY_ALIAS }}
+        run: |
+          # With the release key from the secrets; without it, the debug key
+          # (installable, but a later build with another key cannot update it).
+          if [ -n "$KEYSTORE_BASE64" ]; then
+            echo "$KEYSTORE_BASE64" | base64 -d > "$RUNNER_TEMP/release.p12"
+            export SCREENLET_KEYSTORE="$RUNNER_TEMP/release.p12"
+          fi
+          tools/android-docker.sh testDebugUnitTest assembleRelease
+          cp app/build/outputs/apk/release/app-release.apk "screenlet-companion-$GITHUB_REF_NAME.apk"
+      - name: Release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: gh release create "$GITHUB_REF_NAME" --title "Screenlet companion $GITHUB_REF_NAME" --generate-notes screenlet-companion-*.apk
