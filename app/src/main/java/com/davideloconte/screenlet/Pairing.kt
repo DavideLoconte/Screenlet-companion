@@ -1,4 +1,4 @@
-package io.github.davideloconte.screenlet
+package com.davideloconte.screenlet
 
 import android.content.BroadcastReceiver
 import android.content.Context
@@ -173,8 +173,8 @@ class PairingReceiver : BroadcastReceiver() {
     }
 
     companion object {
-        const val ACTION_ACCEPT = "io.github.davideloconte.screenlet.PAIR"
-        const val ACTION_REJECT = "io.github.davideloconte.screenlet.DONT_PAIR"
+        const val ACTION_ACCEPT = "com.davideloconte.screenlet.PAIR"
+        const val ACTION_REJECT = "com.davideloconte.screenlet.DONT_PAIR"
     }
 }
 

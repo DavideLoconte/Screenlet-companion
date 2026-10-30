@@ -1,4 +1,4 @@
-package io.github.davideloconte.screenlet
+package com.davideloconte.screenlet
 
 import android.content.Context
 import android.content.res.ColorStateList
@@ -138,10 +138,14 @@ data class Row(val view: View, val onClick: ((View) -> Unit)? = null)
 
 
 /** Whether one of the app's screens is in front: then it may open another
- * (the pairing question) without "display over other apps". */
+ * (the pairing question, the PC's desktop) without "display over other apps". */
 object Front {
     private val count = java.util.concurrent.atomic.AtomicInteger()
     val shown get() = count.get() > 0
     fun started() = count.incrementAndGet()
     fun stopped() = count.decrementAndGet()
 }
+
+/** What the system bars and the display cutout cover of a window. */
+fun systemBars(insets: android.view.WindowInsets): android.graphics.Insets =
+    insets.getInsets(android.view.WindowInsets.Type.systemBars() or android.view.WindowInsets.Type.displayCutout())

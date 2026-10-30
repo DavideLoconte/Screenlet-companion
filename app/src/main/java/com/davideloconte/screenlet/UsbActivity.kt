@@ -1,4 +1,4 @@
-package io.github.davideloconte.screenlet
+package com.davideloconte.screenlet
 
 import android.app.Activity
 import android.hardware.usb.UsbAccessory

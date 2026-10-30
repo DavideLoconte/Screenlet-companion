@@ -1,4 +1,4 @@
-package io.github.davideloconte.screenlet
+package com.davideloconte.screenlet
 
 import android.app.Notification
 import android.app.NotificationChannel
@@ -72,4 +72,5 @@ object Notifications {
 
     fun cancelPairing(context: Context, code: String) =
         context.getSystemService(NotificationManager::class.java).cancel(pairingId(code))
+
 }

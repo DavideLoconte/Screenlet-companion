@@ -1,28 +1,27 @@
+# Every push and pull request is linted and built into a debug APK, uploaded
+# as the run's artifact.
 name: CI
+
 on:
   push:
     branches: [main]
   pull_request:
 
 jobs:
-  android:
+  build:
     runs-on: ubuntu-24.04
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/cache@v4
+      - uses: actions/checkout@v5
+
+      - uses: actions/setup-java@v5
         with:
-          path: /home/runner/.cache/screenlet-gradle
-          key: gradle-${{ hashFiles('**/*.gradle.kts', 'gradle/verification-metadata.xml') }}
-      - name: Build environment
-        run: docker build -q -t screenlet-android - < Dockerfile.android
-      - name: Tests, lint, debug APK
-        env:
-          SCREENLET_IMAGE_BUILT: "1"
-          SCREENLET_GRADLE_CACHE: /home/runner/.cache/screenlet-gradle
-        run: |
-          mkdir -p "$SCREENLET_GRADLE_CACHE"
-          tools/android-docker.sh testDebugUnitTest lint assembleDebug
-      - uses: actions/upload-artifact@v4
+          distribution: temurin
+          java-version: 21
+
+      - name: Lint and build
+        run: ./gradlew --no-daemon --console=plain lint assembleDebug
+
+      - uses: actions/upload-artifact@v5
         with:
-          name: screenlet-companion-debug
-          path: app/build/outputs/apk/debug/app-debug.apk
+          name: Screenlet-Companion
+          path: app/build/outputs/apk/debug/*.apk

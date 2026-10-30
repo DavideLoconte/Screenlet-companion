@@ -1,5 +1,5 @@
 <?xml version="1.0" encoding="utf-8"?>
-<!-- Pairings stay off Google's cloud backup; moving to a new
+<!-- Signatures and pairings stay off Google's cloud backup; moving to a new
      device directly takes them along (the new device then pairs again, its
      key never leaves the old one's keystore). -->
 <data-extraction-rules>

@@ -1,4 +1,4 @@
-package io.github.davideloconte.screenlet
+package com.davideloconte.screenlet
 
 import android.security.keystore.KeyGenParameterSpec
 import android.security.keystore.KeyProperties

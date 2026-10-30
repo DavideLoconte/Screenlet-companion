@@ -1,6 +1,7 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
-    <!-- Material 3 Expressive, in the colours Android takes from the wallpaper. -->
+    <!-- Material 3 Expressive, in the colours Android takes from the wallpaper,
+         light or dark as the system is. -->
     <style name="Theme.Screenlet" parent="Theme.Material3Expressive.DynamicColors.DayNight.NoActionBar">
         <item name="android:windowLightStatusBar">@bool/light_theme</item>
         <item name="android:windowLightNavigationBar">@bool/light_theme</item>
@@ -8,10 +9,9 @@
         <item name="screenletTextButtonStyle">@style/Widget.Material3Expressive.Button.TextButton</item>
     </style>
 
-    <!-- The computer's screen: the whole of this one, black behind. -->
-    <style name="Theme.Screenlet.Display">
+    <!-- The computer's desktop: the whole screen. -->
+    <style name="Theme.Screenlet.Fullscreen">
         <item name="android:windowFullscreen">true</item>
-        <item name="android:windowBackground">@android:color/black</item>
     </style>
 
     <!-- Nothing at all, for an instant (UsbActivity). -->

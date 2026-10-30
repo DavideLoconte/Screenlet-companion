@@ -1,33 +1,22 @@
 <?xml version="1.0" encoding="utf-8"?>
-<!-- The computer's display, and the screenlet in front of it with a pen
-     stroke on its screen; all within the 66 dp safe zone. -->
+<!-- A plus sign and a pen stroke under it: Screenlet's tablet half. -->
 <vector xmlns:android="http://schemas.android.com/apk/res/android"
-    xmlns:aapt="http://schemas.android.com/aapt"
     android:width="108dp"
     android:height="108dp"
     android:viewportWidth="108"
     android:viewportHeight="108">
     <path
-        android:pathData="M30,37h28a4,4 0 0 1 4,4v18a4,4 0 0 1 -4,4h-28a4,4 0 0 1 -4,-4v-18a4,4 0 0 1 4,-4z"
-        android:fillColor="#33FFFFFF"
-        android:strokeColor="#DDFFFFFF"
-        android:strokeWidth="3" />
-    <path android:pathData="M40,63h8v4h-8z" android:fillColor="#88FFFFFF" />
-    <path android:pathData="M37,67h14a1.5,1.5 0 0 1 0,3h-14a1.5,1.5 0 0 1 0,-3z" android:fillColor="#AAFFFFFF" />
-    <path
-        android:pathData="M55,52h23a4,4 0 0 1 4,4v14a4,4 0 0 1 -4,4h-23a4,4 0 0 1 -4,-4v-14a4,4 0 0 1 4,-4z"
-        android:fillColor="#FFFFFFFF" />
-    <path android:pathData="M56.5,55h22a1.5,1.5 0 0 1 1.5,1.5v12a1.5,1.5 0 0 1 -1.5,1.5h-22a1.5,1.5 0 0 1 -1.5,-1.5v-12a1.5,1.5 0 0 1 1.5,-1.5z">
-        <aapt:attr name="android:fillColor">
-            <gradient android:type="linear" android:startX="55" android:startY="55" android:endX="80" android:endY="70">
-                <item android:offset="0" android:color="#FF5EE7DF" />
-                <item android:offset="1" android:color="#FF4A6CF7" />
-            </gradient>
-        </aapt:attr>
-    </path>
-    <path
-        android:pathData="M59,66.5C61,62 63.5,62 64.5,64.5S68.5,67 75.5,59"
+        android:pathData="M54,35 L54,61 M41,48 L67,48"
+        android:fillColor="#00000000"
         android:strokeColor="#FFFFFFFF"
-        android:strokeWidth="1.8"
+        android:strokeWidth="10"
         android:strokeLineCap="round" />
+    <path
+        android:pathData="M37,74 C40,70 43,67 45.5,67 C48,67 46,73.5 48.5,73.5 C51,73.5 52.5,68.5 55,68.5 C57,68.5 57,72 59,72 C61,72 64,70 71,67"
+        android:fillColor="#00000000"
+        android:strokeColor="#FFFFFFFF"
+        android:strokeAlpha="0.9"
+        android:strokeWidth="3.5"
+        android:strokeLineCap="round"
+        android:strokeLineJoin="round" />
 </vector>

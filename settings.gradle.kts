@@ -11,5 +11,5 @@ dependencyResolutionManagement {
         mavenCentral()
     }
 }
-rootProject.name = "Screenlet"
+rootProject.name = "Screenlet-Companion"
 include(":app")

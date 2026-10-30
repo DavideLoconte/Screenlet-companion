@@ -1,34 +1,38 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
     <string name="app_name" translatable="false">Screenlet</string>
-    <string name="version" translatable="false">Screenlet %1$s</string>
     <string name="cancel">Cancel</string>
+    <string name="version" translatable="false">Screenlet %1$s</string>
     <string name="channel_service">Ready for the computer</string>
-    <string name="channel_ask">Pairing requests</string>
+    <string name="channel_ask">Requests from the computer</string>
     <string name="ready_title">Screenlet is ready</string>
-    <string name="ready_text">Your computer can use this screen</string>
-    <string name="ready">Ready</string>
-    <string name="status_ready">Plug in the cable, or be on the same Wi-Fi: the computer’s screen appears here when you start it there.</string>
-    <string name="not_paired_title">Not paired yet</string>
-    <string name="status_unpaired">On your computer, open Screenlet and choose “%1$s”.</string>
+    <string name="ready_text">Your computer can use this tablet as a display</string>
     <string name="pair_title">Pair with %1$s?</string>
     <string name="pair_message">Check that the computer shows the same code: %1$s</string>
-    <string name="pair_compare">Pair only if the computer shows this same code, and confirm there too:</string>
     <string name="pair">Pair</string>
-    <string name="display_title">Showing %1$s</string>
+    <string name="pair_compare">Pair only if the computer shows this same code, and confirm there too:</string>
+    <string name="status_ready">Your computer\'s desktop opens here by itself when you start it from the computer, over Wi-Fi or the USB cable.</string>
+    <string name="heading_open">Opening by itself</string>
+    <string name="open_by_itself">Open the desktop by itself</string>
+    <string name="overlay_on">The computer\'s desktop opens on its own.</string>
+    <string name="overlay_off">For the computer\'s desktop to open on its own, allow Screenlet to display over other apps. Without it, open Screenlet first.</string>
+    <string name="overlay_allow">Allow</string>
+    <string name="heading_paired">Paired computers</string>
+    <string name="paired_none_title">None yet</string>
+    <string name="paired_none">On your computer: Screenlet → Pair a tablet.</string>
+    <string name="forget">Forget</string>
+    <string name="forget_title">Forget %1$s?</string>
+    <string name="forget_detail">To use it again, you will compare a code once more.</string>
+    <string name="display_title">Showing the desktop of %1$s</string>
     <string name="display_text">Tap to go back to it</string>
     <string name="display_stop">Stop</string>
     <string name="heading_ready">Ready in the background</string>
     <string name="always_ready">Always ready</string>
-    <string name="always_on">Also after a restart. It only listens: next to no battery.</string>
-    <string name="always_off">Off: the computer reaches this tablet only for 10 minutes after you open Screenlet.</string>
-    <string name="heading_paired">Paired computers</string>
-    <string name="paired_none_title">None yet</string>
-    <string name="paired_none">On your computer: Screenlet → Pair.</string>
-    <string name="forget">Forget</string>
-    <string name="forget_title">Forget %1$s?</string>
-    <string name="forget_detail">To use it again, you will compare a code once more.</string>
-    <string name="onboarding_title">Let Screenlet start by itself</string>
-    <string name="onboarding_text">So the pairing code and the computer’s screen appear on their own, and the computer finds this tablet even with no Wi-Fi network, allow notifications, nearby devices and “Display over other apps”.</string>
-    <string name="overlay_allow">Allow</string>
+    <string name="always_on">Also after a restart: the computer can use the tablet at any time. It only listens; it uses next to no battery.</string>
+    <string name="always_off">Off: your computer reaches this tablet only for 10 minutes after you open Screenlet.</string>
+    <string name="ready">Ready</string>
+    <string name="not_paired_title">Not paired yet</string>
+    <string name="status_unpaired">On your computer, open Screenlet, click Pair a tablet and choose “%1$s”.</string>
+    <string name="onboarding_title">Let Screenlet reach you</string>
+    <string name="onboarding_text">So the pairing code and the computer\'s desktop appear by themselves, allow Screenlet\'s notifications and “Display over other apps”.</string>
 </resources>

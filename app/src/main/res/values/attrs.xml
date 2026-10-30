@@ -1,5 +1,5 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
-    <!-- Text buttons made in code (Ui.kt) take their style from this. -->
+    <!-- Styles for views made in code (Ui.kt): a view takes its style from a theme attribute. -->
     <attr name="screenletTextButtonStyle" format="reference" />
 </resources>

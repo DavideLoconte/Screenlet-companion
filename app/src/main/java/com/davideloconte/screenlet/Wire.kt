@@ -1,4 +1,4 @@
-package io.github.davideloconte.screenlet
+package com.davideloconte.screenlet
 
 import org.json.JSONObject
 import java.io.BufferedInputStream
@@ -10,8 +10,8 @@ import java.util.concurrent.Executors
 import java.util.concurrent.TimeUnit
 
 /**
- * Messages between the PC and the app: a 4-byte big-endian length, then a
- * JSON object of that length.
+ * Messages between the PC and the app (PROTOCOL.md §2): a 4-byte
+ * big-endian length and a JSON header of that length.
  */
 class Wire(private val socket: Socket) {
     private val input = DataInputStream(BufferedInputStream(socket.getInputStream()))
@@ -32,7 +32,7 @@ class Wire(private val socket: Socket) {
         }
     }
 
-    /** The next message, at most maxHeader bytes. */
+    /** The next message's header, at most maxHeader bytes. */
     fun receive(maxHeader: Int = MAX_HEADER): JSONObject {
         val length = input.readInt()
         require(length in 1..maxHeader) { "bad header length $length" }
@@ -40,7 +40,7 @@ class Wire(private val socket: Socket) {
     }
 
     companion object {
-        const val MAX_HEADER = 64 * 1024
+        const val MAX_HEADER = 16 * 1024 * 1024       // PROTOCOL.md: after pairing
         const val UNPAIRED_HEADER = 4 * 1024          // hello and pairing: small
         const val WRITE_TIMEOUT = 30_000L             // ms for a message to go out
 

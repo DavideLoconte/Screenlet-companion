@@ -1,6 +1,7 @@
-package io.github.davideloconte.screenlet
+package com.davideloconte.screenlet
 
 import android.os.ParcelFileDescriptor
+import android.os.Process
 import android.util.Log
 import java.io.DataInputStream
 import java.io.FileInputStream
@@ -10,12 +11,14 @@ import java.net.InetAddress
 import java.net.ServerSocket
 import java.net.Socket
 import java.nio.ByteBuffer
+import java.util.concurrent.ArrayBlockingQueue
 import java.util.concurrent.ConcurrentHashMap
+import java.util.concurrent.TimeUnit
 import javax.net.ssl.SSLSocket
 
 /**
  * Screenlet over the USB cable (Android Open Accessory): the PC is the USB
- * host  and this tablet its accessory. One bulk stream
+ * host and this tablet its accessory. One bulk stream
  * carries what the network would: the PC's TLS connections, each handed to
  * CompanionService as if it had come over the network, and the display's
  * sealed datagrams. Pairing, TLS and AES-GCM stay end to end: the cable is
@@ -45,35 +48,18 @@ class UsbTunnel(
         running = false
         Log.i(CompanionService.TAG, "usb: the cable's link ended")
         closeAll()
+        runCatching { input.close() }  // the read-ahead stops
         runCatching { fd.close() }
     }
 
-    private val datagram = ByteArray(2048)
-    private val replyFrame = ByteArray(HEADER + 2048)
-    private val reply: (ByteArray, Int) -> Unit = { packet, n ->
-        // From DisplaySession.send (under its lock): one frame, no allocation.
-        replyFrame[0] = DATAGRAM.toByte()
-        replyFrame[1] = 0
-        Sealed.writeInt(replyFrame, 2, n)
-        System.arraycopy(packet, 0, replyFrame, HEADER, n)
-        write(replyFrame, HEADER + n)
-    }
-
     private fun receive() {
-        android.os.Process.setThreadPriority(android.os.Process.THREAD_PRIORITY_URGENT_DISPLAY)
+        Process.setThreadPriority(Process.THREAD_PRIORITY_URGENT_DISPLAY)  // the display's packets come this way
         try {
             while (running) {
                 val kind = input.readUnsignedByte()
                 val id = input.readUnsignedByte()
                 val length = input.readInt()
                 require(length in 0..MAX_FRAME) { "a frame of $length bytes" }
-                if (kind == DATAGRAM) {
-                    // The display's: into the buffer kept for them, straight to the session.
-                    if (length > datagram.size) { input.skipBytes(length); continue }
-                    input.readFully(datagram, 0, length)
-                    DisplaySession.current?.fromTunnel(datagram, length, reply)
-                    continue
-                }
                 val data = ByteArray(length).also { input.readFully(it) }
                 when (kind) {
                     HELLO -> {
@@ -88,6 +74,7 @@ class UsbTunnel(
                         try { pipe.getOutputStream().write(data) } catch (e: Exception) { close(id, tell = true) }
                     }
                     CLOSE -> close(id, tell = false)
+                    DATAGRAM -> DisplaySession.current?.fromTunnel(data) { send(DATAGRAM, 0, it) }
                 }
             }
         } catch (e: Exception) {
@@ -156,12 +143,8 @@ class UsbTunnel(
     private fun send(kind: Int, id: Int, data: ByteArray) {
         val frame = ByteBuffer.allocate(HEADER + data.size)
             .put(kind.toByte()).put(id.toByte()).putInt(data.size).put(data).array()
-        write(frame, frame.size)
-    }
-
-    private fun write(frame: ByteArray, length: Int) {
         try {
-            synchronized(output) { output.write(frame, 0, length) }
+            synchronized(output) { output.write(frame) }
         } catch (e: Exception) {
             if (running) Log.i(CompanionService.TAG, "usb: cannot send: $e")
             stop()
@@ -169,35 +152,66 @@ class UsbTunnel(
     }
 
     /** The accessory's stream as the driver allows it: read in whole
-     * transfers (a smaller read loses the rest of one), and never asked
-     * what is available (BufferedInputStream does: the driver says EINVAL). */
+     * transfers (a smaller read loses the rest of one), never asked what is
+     * available (BufferedInputStream does: the driver says EINVAL), and read
+     * ahead on a thread of its own, so the PC's next transfer never waits for
+     * the packets of this one to be opened and decoded (that held the cable
+     * to some 5 MB/s). At most AHEAD transfers wait: then the PC does. */
     private class Transfers(private val input: FileInputStream) : InputStream() {
-        private val buffer = ByteArray(BUFFER)
+        private val ready = ArrayBlockingQueue<ByteArray>(AHEAD)
+        @Volatile private var closed = false
+        @Volatile private var failure: Exception? = null
+        private var current = ByteArray(0)
         private var at = 0
-        private var end = 0
 
+        init {
+            Thread({
+                Process.setThreadPriority(Process.THREAD_PRIORITY_URGENT_DISPLAY)
+                try {
+                    while (!closed) {
+                        val buffer = ByteArray(BUFFER)
+                        val n = input.read(buffer, 0, buffer.size)
+                        if (n < 0) break
+                        val transfer = if (n == buffer.size) buffer else buffer.copyOf(n)
+                        while (!closed && !ready.offer(transfer, 100, TimeUnit.MILLISECONDS)) continue
+                    }
+                } catch (e: Exception) {
+                    failure = e
+                }
+                closed = true
+            }, "screenlet-usb-read").start()
+        }
+
+        /** Whether there is something to read, waiting for the next transfer. */
         private fun fill(): Boolean {
-            while (at == end) {
-                val n = input.read(buffer, 0, buffer.size)
-                if (n < 0) return false
+            while (at == current.size) {
+                val next = ready.poll(100, TimeUnit.MILLISECONDS)
+                if (next == null) {
+                    if (closed && ready.isEmpty()) failure?.let { throw it } ?: return false
+                    continue
+                }
+                current = next
                 at = 0
-                end = n
             }
             return true
         }
 
-        override fun read(): Int = if (fill()) buffer[at++].toInt() and 0xFF else -1
+        override fun read(): Int = if (fill()) current[at++].toInt() and 0xFF else -1
 
         override fun read(b: ByteArray, off: Int, len: Int): Int {
             if (len == 0) return 0
             if (!fill()) return -1
-            val n = minOf(len, end - at)
-            System.arraycopy(buffer, at, b, off, n)
+            val n = minOf(len, current.size - at)
+            System.arraycopy(current, at, b, off, n)
             at += n
             return n
         }
 
-        override fun available() = end - at
+        override fun available() = current.size - at
+
+        override fun close() {
+            closed = true
+        }
     }
 
     companion object {
@@ -209,6 +223,7 @@ class UsbTunnel(
         const val HEADER = 6
         const val CHUNK = 16 * 1024          // bytes of a pipe read, one frame
         const val BUFFER = 16 * 1024         // the accessory's reads: its driver's transfer size (more: EINVAL)
+        const val AHEAD = 64                 // transfers read ahead, at most: 1 MiB
         const val MAX_FRAME = 1024 * 1024
         const val PIPE_TIMEOUT = 2_000       // ms for our own end to connect
     }

@@ -1,5 +1,8 @@
-build/
 .gradle/
 .kotlin/
+build/
+app/build/
 local.properties
-*.apk
+*.p12
+*.jks
+*.keystore

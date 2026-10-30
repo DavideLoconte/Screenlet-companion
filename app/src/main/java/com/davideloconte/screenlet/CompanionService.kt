@@ -1,4 +1,4 @@
-package io.github.davideloconte.screenlet
+package com.davideloconte.screenlet
 
 import android.app.Service
 import android.content.BroadcastReceiver
@@ -26,16 +26,17 @@ import javax.net.ssl.SSLServerSocket
 import javax.net.ssl.SSLSocket
 
 /**
- * Always ready for the PC: listens over TLS on the network (said with mDNS,
- * _screenlet._tcp), on the USB cable (UsbTunnel) and, with no network to
- * share, on a Wi-Fi Direct group of its own (WifiDirect), so Screenlet on
- * the PC can show its desktop here. A foreground service (a quiet
- * notification); it does nothing until the PC connects.
+ * Always ready for the computer: listens over TLS on the home network and
+ * says so with mDNS (_screenlet._tcp), and takes the computer's links over
+ * the USB cable (UsbTunnel), so Screenlet on the computer can show its
+ * desktop here. A foreground service (Android shows it as a quiet
+ * notification); it does nothing until the computer connects.
  */
 class CompanionService : Service() {
     @Volatile private var server: SSLServerSocket? = null
     @Volatile private var registration: NsdManager.RegistrationListener? = null
     @Volatile private var stopped = false
+    // A few links per computer; more connections are turned away.
     private val connections = ThreadPoolExecutor(0, MAX_CONNECTIONS, 60, TimeUnit.SECONDS, SynchronousQueue())
 
     override fun onBind(intent: Intent?): IBinder? = null
@@ -55,9 +56,6 @@ class CompanionService : Service() {
             return
         }
         Thread(::serve, "screenlet-server").start()
-        getSystemService(android.net.ConnectivityManager::class.java)
-            .registerNetworkCallback(android.net.NetworkRequest.Builder()
-                .addTransportType(android.net.NetworkCapabilities.TRANSPORT_WIFI).build(), wifi)
         handler.postDelayed(::idleCheck, IDLE_CHECK)
         registerReceiver(usbGone, IntentFilter().apply {
             addAction(UsbManager.ACTION_USB_ACCESSORY_DETACHED)
@@ -76,31 +74,14 @@ class CompanionService : Service() {
                 usb?.stop()
                 usb = null
             }
-            direct()
         }
     }
 
-    /** The Wi-Fi networks the tablet is on: none, and its own Wi-Fi Direct group comes up. */
-    private val wifiNetworks = ConcurrentHashMap.newKeySet<android.net.Network>()
-    private val wifi = object : android.net.ConnectivityManager.NetworkCallback() {
-        override fun onAvailable(network: android.net.Network) { wifiNetworks.add(network); direct() }
-        override fun onLost(network: android.net.Network) { wifiNetworks.remove(network); direct() }
-    }
-
-    /** Wi-Fi Direct only when nothing else reaches the PC: the group's radio
-     * time would slow the Wi-Fi network down, and the cable needs none. */
-    private fun direct() = handler.post {
-        if (stopped) return@post
-        val needed = wifiNetworks.isEmpty() && synchronized(this) { usb == null }
-        if (needed) WifiDirect.start(this) else WifiDirect.stop(this)
-    }
-
     override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
-        lastUse = System.currentTimeMillis()  // the app was opened, or a job came
+        lastUse = System.currentTimeMillis()  // the app was opened, or the cable plugged
         val accessory = intent?.getParcelableExtra(UsbManager.EXTRA_ACCESSORY, UsbAccessory::class.java)
             ?: synchronized(this) { if (usb == null) pluggedUsb() else null }
         accessory?.let(::openUsb)
-        direct()
         return if (Options.alwaysReady(this)) START_STICKY else START_NOT_STICKY
     }
 
@@ -122,9 +103,7 @@ class CompanionService : Service() {
     override fun onDestroy() {
         instance = null
         handler.removeCallbacksAndMessages(null)
-        runCatching { unregisterReceiver(usbGone) }
-        runCatching { getSystemService(android.net.ConnectivityManager::class.java).unregisterNetworkCallback(wifi) }
-        WifiDirect.stop(this)  // not registered if onCreate stopped early
+        runCatching { unregisterReceiver(usbGone) }  // not registered if onCreate stopped early
         synchronized(this) {
             stopped = true
             registration?.let { runCatching { (getSystemService(NSD_SERVICE) as NsdManager).unregisterService(it) } }
@@ -144,7 +123,7 @@ class CompanionService : Service() {
             if (stopped) return
             socket = try {
                 val factory = Identity.sslContext().serverSocketFactory
-                // A port the PC knows: over Wi-Fi Direct there is no mDNS.
+                // A port the PC knows, should mDNS not answer.
                 (try { factory.createServerSocket(PORT) } catch (e: java.net.BindException) {
                     factory.createServerSocket(0)
                 }) as SSLServerSocket
@@ -218,14 +197,13 @@ class CompanionService : Service() {
             usb = UsbTunnel(this, fd) { reopenUsb(accessory, USB_REOPEN_TRIES) }.also { it.start() }
         }
         Log.i(TAG, "usb: the cable's link is open")
-        direct()
     }
 
     /** The PC's accessory, left on the cable while the app was not running
      * (Android hands it over only when it attaches): this app's to open. */
     private fun pluggedUsb(): UsbAccessory? {
         val manager = getSystemService(UsbManager::class.java)
-        return manager.accessoryList?.firstOrNull { it.manufacturer == "Screenlet" && manager.hasPermission(it) }
+        return manager.accessoryList?.firstOrNull { it.manufacturer == ACCESSORY && manager.hasPermission(it) }
     }
 
     /** The PC resets the cable's link to start afresh, and Android may keep
@@ -299,16 +277,10 @@ class CompanionService : Service() {
                 require(hello.optString("type") == "hello") { "expected hello" }
                 val pcName = readable(hello.optString("name"))
                 // "at": the address the PC reached, so it can tell this
-                // tablet answered itself (over Wi-Fi Direct, say), not
-                // through someone passing the connection on.
-                val reply = JSONObject().put("type", "hello").put("name", deviceName(this))
-                    .put("version", PROTOCOL).put("paired", known).put("at", address(socket.localAddress))
-                // Our Wi-Fi Direct group, for a PC both sides know: it joins
-                // it when there is no network to share.
-                if (known && hello.optBoolean("paired")) WifiDirect.credentials(this).let { (ssid, passphrase) ->
-                    reply.put("p2p", JSONObject().put("ssid", ssid).put("passphrase", passphrase).put("at", WifiDirect.GROUP_OWNER))
-                }
-                wire.send(reply)
+                // tablet answered itself, not through someone passing the
+                // connection on.
+                wire.send(JSONObject().put("type", "hello").put("name", deviceName(this))
+                    .put("version", PROTOCOL).put("paired", known).put("at", address(socket.localAddress)))
                 // Another version: the PC sees ours and says so to its user.
                 if (hello.optInt("version") != PROTOCOL) return
                 if (!known || !hello.optBoolean("paired")) {
@@ -328,7 +300,9 @@ class CompanionService : Service() {
                 socket.soTimeout = PAIRED_TIMEOUT
                 while (true) {
                     val message = wire.receive()
-                    when (message.optString("type")) {
+                    val type = message.optString("type")
+                    require(message.optLong("size", 0) == 0L) { "unexpected payload" }
+                    when (type) {
                         "ping" -> wire.send(JSONObject().put("type", "pong"))
                         "display" -> return display(socket, wire, message, pcName)
                         "bye" -> return
@@ -352,13 +326,17 @@ class CompanionService : Service() {
     private val handshaking = AtomicInteger()
     private val links = ConcurrentHashMap<String, MutableSet<SSLSocket>>()
 
-    /** The user forgot this PC: what it has open ends now. */
+    /** The user forgot this PC: what it has open ends now (its desktop on
+     * screen), not when it happens to hang up. */
     fun disconnect(fingerprint: String) {
         links.remove(fingerprint)?.forEach { runCatching { it.close() } }
     }
 
-    // Wi-Fi without power saving while the desktop is on screen: saving, it
-    // holds packets back and sends them in bunches every 100-300 ms.
+    private fun notification(): android.app.Notification =
+        displaying?.let { Notifications.displaying(this, it) } ?: Notifications.ready(this)
+
+    // Wi-Fi without power saving while the PC's desktop is on screen: saving,
+    // it holds packets back and sends them in bunches every 100-300 ms.
     private val wifiLock by lazy {
         getSystemService(android.net.wifi.WifiManager::class.java)
             .createWifiLock(android.net.wifi.WifiManager.WIFI_MODE_FULL_LOW_LATENCY, "screenlet:display")
@@ -386,9 +364,16 @@ class CompanionService : Service() {
             wire.send(JSONObject().put("type", "refused").put("reason", "background"))
             return
         }
-        // HEVC if the PC asks for it and this tablet decodes it in hardware; H.264 otherwise.
-        val codec = if (request.optString("codec") == "hevc" && DisplaySession.decodes(HEVC)) "hevc" else "avc"
-        val session = DisplaySession(key, socket.inetAddress, port, if (codec == "hevc") HEVC else AVC)
+        // The first of the PC's codecs (its order of preference) this tablet
+        // decodes in hardware; in software only if none is.
+        val offered = request.optJSONArray("codecs")?.let { a -> List(a.length()) { a.optString(it) } }.orEmpty()
+        val codec = offered.firstOrNull { CODECS[it]?.let { mime -> DisplaySession.decodes(mime, hardware = true) } == true }
+            ?: offered.firstOrNull { CODECS[it]?.let { mime -> DisplaySession.decodes(mime, hardware = false) } == true }
+        if (codec == null) {
+            wire.send(JSONObject().put("type", "refused").put("reason", "codec"))
+            return
+        }
+        val session = DisplaySession(key, socket.inetAddress, port, CODECS.getValue(codec))
         // Ended here (Back, Stop): the link closes, and the PC with it.
         session.onEnd = { Thread { runCatching { socket.close() } }.start() }
         session.onVisible = { lowLatency(false) }  // no low-latency Wi-Fi while nothing is shown
@@ -401,16 +386,17 @@ class CompanionService : Service() {
         before?.end()
         session.start()
         try {
-            // The refresh the panel will run at (DisplayActivity asks for its fastest).
-            val mode = DisplayActivity.fastestMode(getSystemService(android.hardware.display.DisplayManager::class.java)
-                .getDisplay(android.view.Display.DEFAULT_DISPLAY))
+            val mode = getSystemService(android.hardware.display.DisplayManager::class.java)
+                .getDisplay(android.view.Display.DEFAULT_DISPLAY).mode
             wire.send(JSONObject().put("type", "display-ready").put("port", session.socket.localPort)
                 .put("width", maxOf(mode.physicalWidth, mode.physicalHeight))
                 .put("height", minOf(mode.physicalWidth, mode.physicalHeight))
-                .put("refresh", mode.refreshRate.toDouble()).put("codec", codec))
+                .put("refresh", mode.refreshRate.toDouble()).put("codec", codec)
+                .put("decoders", DisplaySession.profile(maxOf(mode.physicalWidth, mode.physicalHeight),
+                    minOf(mode.physicalWidth, mode.physicalHeight))))
             startActivity(Intent(this, DisplayActivity::class.java).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK))
             displaying = pc
-            showStatus()
+            showNotification()
             lowLatency(true)
             socket.soTimeout = SILENT_PC
             while (wire.receive().optString("type") != "stop") continue
@@ -419,16 +405,16 @@ class CompanionService : Service() {
             synchronized(DisplaySession) { if (DisplaySession.current === session) DisplaySession.current = null }
             android.os.Handler(mainLooper).post { DisplayActivity.ended(session) }
             if (DisplaySession.current == null) displaying = null
-            showStatus()
+            showNotification()
             lowLatency(false)
         }
     }
 
-
     @Volatile private var displaying: String? = null  // the PC whose desktop is shown
 
-    private fun showStatus() = getSystemService(android.app.NotificationManager::class.java)
-        .notify(Notifications.SERVICE_ID, displaying?.let { Notifications.displaying(this, it) } ?: Notifications.ready(this))
+    /** What the notification says, when only that changed. */
+    private fun showNotification() =
+        getSystemService(android.app.NotificationManager::class.java).notify(Notifications.SERVICE_ID, notification())
 
     /** Numeric comparison: the app commits to its random number, learns the
      * PC's, shows its own; both screens then show a code made of the two
@@ -483,19 +469,26 @@ class CompanionService : Service() {
     companion object {
         const val TAG = "Screenlet"
         const val SERVICE_TYPE = "_screenlet._tcp"
+        const val ACCESSORY = "Screenlet"      // the computer's USB accessory manufacturer (PROTOCOL.md §4)
         const val PROTOCOL = 1
-        const val PORT = 47237                 // another if it is taken (mDNS says which)
+        const val PORT = 47236                 // the default; another if it is taken
         const val MAX_CONNECTIONS = 32
         const val MAX_UNPAIRED = 4             // connections of peers not yet known, at a time
         const val MAX_HANDSHAKING = 8          // connections still in their TLS handshake, at a time
         const val LISTEN_RETRY = 30_000L       // ms before trying to listen again
         const val HANDSHAKE_DEADLINE = 20_000L // ms for an unknown peer's whole handshake
         const val HANDSHAKE_TIMEOUT = 20_000   // ms for TLS, hello and the pairing messages
-        const val AVC = android.media.MediaFormat.MIMETYPE_VIDEO_AVC
-        const val HEVC = android.media.MediaFormat.MIMETYPE_VIDEO_HEVC
+        /** The codecs of PROTOCOL.md §3.3, by name. */
+        val CODECS = mapOf(
+            "avc" to android.media.MediaFormat.MIMETYPE_VIDEO_AVC,
+            "hevc" to android.media.MediaFormat.MIMETYPE_VIDEO_HEVC,
+            "vp8" to android.media.MediaFormat.MIMETYPE_VIDEO_VP8,
+            "vp9" to android.media.MediaFormat.MIMETYPE_VIDEO_VP9,
+            "av1" to android.media.MediaFormat.MIMETYPE_VIDEO_AV1,
+        )
         const val PAIRING_TIMEOUT = 150_000    // ms: the user compares the codes
         const val PAIRED_TIMEOUT = 90_000      // ms without a word from a paired PC
-        const val SILENT_PC = 20_000           // ms without a ping during a display session
+        const val SILENT_PC = 15_000           // ms without a ping during a display session
         const val IDLE_CHECK = 60_000L       // ms
         const val IDLE_STOP = 10 * 60_000L   // ms without a PC when not always ready
         const val USB_REOPEN_WAIT = 500L     // ms between looks for the accessory after its stream broke

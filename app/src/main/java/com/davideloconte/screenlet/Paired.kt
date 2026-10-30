@@ -1,4 +1,4 @@
-package io.github.davideloconte.screenlet
+package com.davideloconte.screenlet
 
 import android.content.Context
 
@@ -13,6 +13,7 @@ object Options {
 
     fun setAlwaysReady(context: Context, on: Boolean) =
         context.getSharedPreferences(PREFS, Context.MODE_PRIVATE).edit().putBoolean("always", on).apply()
+
 }
 
 /** PCs the user paired with: certificate fingerprint -> name. */

@@ -1,4 +1,4 @@
-package io.github.davideloconte.screenlet
+package com.davideloconte.screenlet
 
 import android.Manifest
 import android.content.Intent
@@ -18,8 +18,8 @@ import com.google.android.material.materialswitch.MaterialSwitch
 import com.google.android.material.R as M
 
 /**
- * What the app is doing and what it may do: ready for the PC, what lets it
- * open by itself, the paired PCs. Nothing else to set: the PC chooses.
+ * What the app is doing and what it may do: the service that waits for the
+ * PC, the permission that lets its desktop open by itself, the paired PCs.
  */
 class MainActivity : AppCompatActivity() {
     private lateinit var content: LinearLayout
@@ -41,7 +41,7 @@ class MainActivity : AppCompatActivity() {
                 v.setPadding(bars.left + side, bars.top + dp(8), bars.right + side, bars.bottom + dp(24))
             }
             setOnApplyWindowInsetsListener { v, insets ->
-                bars = insets.getInsets(android.view.WindowInsets.Type.systemBars() or android.view.WindowInsets.Type.displayCutout())
+                bars = systemBars(insets)
                 pad(v)
                 insets
             }
@@ -89,6 +89,14 @@ class MainActivity : AppCompatActivity() {
                 getString(if (always.isChecked) R.string.always_on else R.string.always_off), always)) { always.toggle() },
         ))
 
+        val overlay = Settings.canDrawOverlays(this)
+        section(R.string.heading_open, listOf(
+            Row(row(R.drawable.ic_open, getString(R.string.open_by_itself),
+                getString(if (overlay) R.string.overlay_on else R.string.overlay_off),
+                if (overlay) icon(R.drawable.ic_check, androidx.appcompat.R.attr.colorPrimary)
+                else button(getString(R.string.overlay_allow), Look.TONAL) { allowOverlay() })) { allowOverlay() },
+        ))
+
         val paired = Paired.all(this)
         section(R.string.heading_paired, if (paired.isEmpty()) {
             listOf(Row(row(R.drawable.ic_computer, getString(R.string.paired_none_title), getString(R.string.paired_none))))
@@ -132,14 +140,13 @@ class MainActivity : AppCompatActivity() {
     }
 
     /** What lets the app reach the user by itself (the pairing code, the
-     * desktop opening when the PC asks) and the PC reach it with no network
-     * (Wi-Fi Direct), asked together and said why, while anything of it is
-     * missing; null once it is all there. */
+     * PC's desktop), asked together and said why, while
+     * anything of it is missing; null once it is all there. */
     private fun onboarding(): View? {
-        val notifications = granted(Manifest.permission.POST_NOTIFICATIONS)
-        val nearby = granted(Manifest.permission.NEARBY_WIFI_DEVICES)
+        val notifications = checkSelfPermission(Manifest.permission.POST_NOTIFICATIONS) ==
+            PackageManager.PERMISSION_GRANTED
         val overlay = Settings.canDrawOverlays(this)
-        if (notifications && nearby && overlay) return null
+        if (notifications && overlay) return null
         return MaterialCardView(this, null, M.attr.materialCardViewFilledStyle).apply {
             radius = dp(28f)
             layoutParams = LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT,
@@ -151,23 +158,19 @@ class MainActivity : AppCompatActivity() {
                 addView(label(getString(R.string.onboarding_text), M.attr.textAppearanceBodyMedium,
                     M.attr.colorOnSurfaceVariant).apply { setPadding(0, dp(8), 0, dp(12)) })
                 addView(button(getString(R.string.overlay_allow), Look.FILLED) {
-                    // Android's questions first, then "display over other apps" (a settings page).
-                    val ask = listOfNotNull(Manifest.permission.POST_NOTIFICATIONS.takeIf { !notifications },
-                        Manifest.permission.NEARBY_WIFI_DEVICES.takeIf { !nearby })
-                    if (ask.isNotEmpty()) requestPermissions(ask.toTypedArray(), 1) else allowOverlay()
+                    // Notifications first (a question here), then "display over other apps" (a settings page).
+                    if (!notifications) requestPermissions(arrayOf(Manifest.permission.POST_NOTIFICATIONS), 1)
+                    else allowOverlay()
                 }, LinearLayout.LayoutParams(ViewGroup.LayoutParams.WRAP_CONTENT, ViewGroup.LayoutParams.WRAP_CONTENT)
                     .apply { gravity = Gravity.END })
             })
         }
     }
 
-    private fun granted(permission: String) = checkSelfPermission(permission) == PackageManager.PERMISSION_GRANTED
-
     override fun onRequestPermissionsResult(requestCode: Int, permissions: Array<out String>, results: IntArray) {
         super.onRequestPermissionsResult(requestCode, permissions, results)
-        if (requestCode == 1) {  // the onboarding card's: then the overlay, if missing
-            if (!Settings.canDrawOverlays(this)) allowOverlay() else refresh()
-        }
+        // Notifications (the onboarding card): then the overlay, if missing.
+        if (!Settings.canDrawOverlays(this)) allowOverlay() else refresh()
     }
 
     private fun section(title: Int, rows: List<Row>) {
