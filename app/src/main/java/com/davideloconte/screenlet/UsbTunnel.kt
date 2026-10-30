@@ -52,6 +52,17 @@ class UsbTunnel(
         runCatching { fd.close() }
     }
 
+    private val datagram = ByteArray(65536)
+    private val replyFrame = ByteArray(HEADER + 2048)
+    private val reply: (ByteArray, Int) -> Unit = { packet, n ->
+        // From DisplaySession.send (under its lock): one frame, no allocation.
+        replyFrame[0] = DATAGRAM.toByte()
+        replyFrame[1] = 0
+        Sealed.writeInt(replyFrame, 2, n)
+        System.arraycopy(packet, 0, replyFrame, HEADER, n)
+        write(replyFrame, HEADER + n)
+    }
+
     private fun receive() {
         Process.setThreadPriority(Process.THREAD_PRIORITY_URGENT_DISPLAY)  // the display's packets come this way
         try {
@@ -60,6 +71,13 @@ class UsbTunnel(
                 val id = input.readUnsignedByte()
                 val length = input.readInt()
                 require(length in 0..MAX_FRAME) { "a frame of $length bytes" }
+                if (kind == DATAGRAM) {
+                    // The display's: into the buffer kept for them, straight to the session.
+                    if (length > datagram.size) { input.skipBytes(length); continue }
+                    input.readFully(datagram, 0, length)
+                    DisplaySession.current?.fromTunnel(datagram, length, reply)
+                    continue
+                }
                 val data = ByteArray(length).also { input.readFully(it) }
                 when (kind) {
                     HELLO -> {
@@ -74,7 +92,6 @@ class UsbTunnel(
                         try { pipe.getOutputStream().write(data) } catch (e: Exception) { close(id, tell = true) }
                     }
                     CLOSE -> close(id, tell = false)
-                    DATAGRAM -> DisplaySession.current?.fromTunnel(data) { send(DATAGRAM, 0, it) }
                 }
             }
         } catch (e: Exception) {
@@ -143,8 +160,12 @@ class UsbTunnel(
     private fun send(kind: Int, id: Int, data: ByteArray) {
         val frame = ByteBuffer.allocate(HEADER + data.size)
             .put(kind.toByte()).put(id.toByte()).putInt(data.size).put(data).array()
+        write(frame, frame.size)
+    }
+
+    private fun write(frame: ByteArray, length: Int) {
         try {
-            synchronized(output) { output.write(frame) }
+            synchronized(output) { output.write(frame, 0, length) }
         } catch (e: Exception) {
             if (running) Log.i(CompanionService.TAG, "usb: cannot send: $e")
             stop()

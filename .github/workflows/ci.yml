@@ -1,4 +1,4 @@
-# Every push and pull request is linted and built into a debug APK, uploaded
+# Every push and pull request is tested, linted and built into a debug APK, uploaded
 # as the run's artifact.
 name: CI
 
@@ -19,7 +19,7 @@ jobs:
           java-version: 21
 
       - name: Lint and build
-        run: ./gradlew --no-daemon --console=plain lint assembleDebug
+        run: ./gradlew --no-daemon --console=plain testDebugUnitTest lint assembleDebug
 
       - uses: actions/upload-artifact@v5
         with:

@@ -1,0 +1,46 @@
+# A v* tag publishes a release with the APK, signed with the key in the
+# secrets (SCREENLET_KEYSTORE_BASE64, SCREENLET_KEYSTORE_PASSWORD,
+# SCREENLET_KEY_ALIAS), or with a debug key when there is none.
+name: Release
+
+on:
+  push:
+    tags: ["v*"]
+
+permissions:
+  contents: write
+
+jobs:
+  apk:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v5
+
+      - uses: actions/setup-java@v5
+        with:
+          distribution: temurin
+          java-version: 21
+
+      - name: The tag is the version
+        run: '[ "v$(cat VERSION)" = "$GITHUB_REF_NAME" ] || { echo "the tag is not v$(cat VERSION)"; exit 1; }'
+
+      - name: Signed APK
+        env:
+          KEYSTORE_BASE64: ${{ secrets.SCREENLET_KEYSTORE_BASE64 }}
+          SCREENLET_KEYSTORE_PASSWORD: ${{ secrets.SCREENLET_KEYSTORE_PASSWORD }}
+          SCREENLET_KEY_ALIAS: ${{ secrets.SCREENLET_KEY_ALIAS }}
+        run: |
+          if [ -n "$KEYSTORE_BASE64" ]; then
+            echo "$KEYSTORE_BASE64" | base64 -d > "$RUNNER_TEMP/release.p12"
+            export SCREENLET_KEYSTORE="$RUNNER_TEMP/release.p12"
+            ./gradlew --no-daemon --console=plain testDebugUnitTest assembleRelease
+            cp app/build/outputs/apk/release/app-release.apk "Screenlet-Companion-$GITHUB_REF_NAME.apk"
+          else
+            ./gradlew --no-daemon --console=plain testDebugUnitTest assembleShrunk
+            cp app/build/outputs/apk/shrunk/app-shrunk.apk "Screenlet-Companion-$GITHUB_REF_NAME.apk"
+          fi
+
+      - name: Release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: gh release create "$GITHUB_REF_NAME" --title "Screenlet Companion $GITHUB_REF_NAME" --generate-notes Screenlet-Companion-*.apk

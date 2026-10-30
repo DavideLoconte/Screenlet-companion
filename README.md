@@ -1,10 +1,13 @@
+<p align="center"><img src="docs/icon.png" width="128" alt="Screenlet icon"></p>
+
 # Screenlet Companion
 
 The Android app of Screenlet: it turns a tablet (made for the Samsung Galaxy
 Tab and its S Pen) into a second display for your computer, over Wi-Fi or a
 USB-C cable, with the lowest latency it can get. The computer runs
-[Screenlet for macOS](https://github.com/DavideLoconte/Screenlet-macOS); the
-two speak the [Screenlet protocol](PROTOCOL.md).
+[Screenlet for macOS](https://github.com/DavideLoconte/Screenlet-macos) or
+[Screenlet for GNOME](https://github.com/DavideLoconte/Screenlet-gnome); they
+speak the [Screenlet protocol](PROTOCOL.md).
 
 Screenlet started as a fork of
 [Plus One](https://github.com/GabrieleSantangelo/PlusOne).
@@ -18,11 +21,29 @@ Screenlet started as a fork of
   without power saving while the desktop is shown.
 - **Touch and S Pen.** Every finger and every pen sample, with pressure,
   tilt, hover and the barrel button, goes to the computer.
-- **USB cable or network.** Over the cable (Android Open Accessory) the app
-  opens by itself, with no developer options; on the network it announces
-  itself with mDNS.
+- **USB cable, network or Wi-Fi Direct.** Over the cable (Android Open
+  Accessory) the app opens by itself, with no developer options; on the
+  network it announces itself with mDNS; with no network to share, it runs a
+  Wi-Fi Direct group the paired computer joins.
 - **Only your computer.** Paired once by a six-digit code on both screens,
   TLS 1.3 on the link and AES-GCM on every video and input packet.
+
+## Latency
+
+- Packets are opened into buffers the app keeps, and each video packet is
+  copied once, straight to its place in the frame: nothing allocated per packet.
+- A whole frame goes straight into a free decoder buffer, decoded with every
+  low-latency switch there is (Android's, Exynos', Qualcomm's, MediaTek's,
+  the highest operating rate), and shown at the next vsync.
+- The panel runs at its fastest refresh while the desktop is on screen.
+- Receiving, the cable and the decoder's callbacks run at display priority.
+- Touch and pen go out as the digitizer reports them, straight from the UI
+  thread into a buffer kept for them: no allocation, no thread hop.
+
+Each second the app measures five stages of every frame (capture to
+decoded, to the first packet, the frame's spread over the network, the wait
+for the decoder, the decoder) and sends them to the computer, which logs
+them with its own ([PROTOCOL.md](PROTOCOL.md) §3.5).
 
 ## How it works
 
@@ -40,7 +61,7 @@ Requires JDK 21 or later and the Android SDK (`ANDROID_HOME`, or
 `local.properties` with `sdk.dir`).
 
 ```bash
-./gradlew lint assembleDebug     # app/build/outputs/apk/debug/app-debug.apk
+./gradlew testDebugUnitTest lint assembleDebug     # app/build/outputs/apk/debug/app-debug.apk
 adb install app/build/outputs/apk/debug/app-debug.apk
 ```
 
@@ -53,14 +74,17 @@ installs over the debug one.
 A release build (`assembleRelease`) is signed when `SCREENLET_KEYSTORE`,
 `SCREENLET_KEYSTORE_PASSWORD` and optionally `SCREENLET_KEY_ALIAS` are set.
 Dependencies are checked against `gradle/verification-metadata.xml`.
+Without a JDK or SDK here, `DOCKER=podman tools/android-docker.sh testDebugUnitTest
+assembleDebug` builds in a container. The unit tests check the shared protocol
+vectors (`vectors.json`) and each step of the receive path, and print its cost
+per packet. A `v*` tag publishes a release with the APK.
 
 On first launch, allow the notifications (for the pairing code) and
 "Display over other apps" (so the computer's desktop opens by itself).
 
 ## Future work
 
-- Computers on Linux and Windows, speaking the same protocol.
-- Wi-Fi Direct: a P2P group hosted by the tablet, for a link with no router.
+- Computers on Windows and KDE, speaking the same protocol.
 
 ## License
 

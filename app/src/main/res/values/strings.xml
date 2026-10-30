@@ -34,5 +34,5 @@
     <string name="not_paired_title">Not paired yet</string>
     <string name="status_unpaired">On your computer, open Screenlet, click Pair a tablet and choose “%1$s”.</string>
     <string name="onboarding_title">Let Screenlet reach you</string>
-    <string name="onboarding_text">So the pairing code and the computer\'s desktop appear by themselves, allow Screenlet\'s notifications and “Display over other apps”.</string>
+    <string name="onboarding_text">So the pairing code and the computer\'s desktop appear by themselves, and the computer finds this tablet even with no Wi-Fi network, allow notifications, nearby devices and “Display over other apps”.</string>
 </resources>

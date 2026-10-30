@@ -56,6 +56,9 @@ class CompanionService : Service() {
             return
         }
         Thread(::serve, "screenlet-server").start()
+        getSystemService(android.net.ConnectivityManager::class.java)
+            .registerNetworkCallback(android.net.NetworkRequest.Builder()
+                .addTransportType(android.net.NetworkCapabilities.TRANSPORT_WIFI).build(), wifi)
         handler.postDelayed(::idleCheck, IDLE_CHECK)
         registerReceiver(usbGone, IntentFilter().apply {
             addAction(UsbManager.ACTION_USB_ACCESSORY_DETACHED)
@@ -74,7 +77,23 @@ class CompanionService : Service() {
                 usb?.stop()
                 usb = null
             }
+            direct()
         }
+    }
+
+    /** The Wi-Fi networks the tablet is on: none, and its own Wi-Fi Direct group comes up. */
+    private val wifiNetworks = ConcurrentHashMap.newKeySet<android.net.Network>()
+    private val wifi = object : android.net.ConnectivityManager.NetworkCallback() {
+        override fun onAvailable(network: android.net.Network) { wifiNetworks.add(network); direct() }
+        override fun onLost(network: android.net.Network) { wifiNetworks.remove(network); direct() }
+    }
+
+    /** Wi-Fi Direct only when nothing else reaches the computer: the group's
+     * radio time would slow a Wi-Fi network down, and the cable needs none. */
+    private fun direct() = handler.post {
+        if (stopped) return@post
+        val needed = wifiNetworks.isEmpty() && synchronized(this) { usb == null }
+        if (needed) WifiDirect.start(this) else WifiDirect.stop(this)
     }
 
     override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
@@ -82,6 +101,7 @@ class CompanionService : Service() {
         val accessory = intent?.getParcelableExtra(UsbManager.EXTRA_ACCESSORY, UsbAccessory::class.java)
             ?: synchronized(this) { if (usb == null) pluggedUsb() else null }
         accessory?.let(::openUsb)
+        direct()
         return if (Options.alwaysReady(this)) START_STICKY else START_NOT_STICKY
     }
 
@@ -104,6 +124,8 @@ class CompanionService : Service() {
         instance = null
         handler.removeCallbacksAndMessages(null)
         runCatching { unregisterReceiver(usbGone) }  // not registered if onCreate stopped early
+        runCatching { getSystemService(android.net.ConnectivityManager::class.java).unregisterNetworkCallback(wifi) }
+        WifiDirect.stop(this)
         synchronized(this) {
             stopped = true
             registration?.let { runCatching { (getSystemService(NSD_SERVICE) as NsdManager).unregisterService(it) } }
@@ -197,6 +219,7 @@ class CompanionService : Service() {
             usb = UsbTunnel(this, fd) { reopenUsb(accessory, USB_REOPEN_TRIES) }.also { it.start() }
         }
         Log.i(TAG, "usb: the cable's link is open")
+        direct()
     }
 
     /** The PC's accessory, left on the cable while the app was not running
@@ -279,8 +302,14 @@ class CompanionService : Service() {
                 // "at": the address the PC reached, so it can tell this
                 // tablet answered itself, not through someone passing the
                 // connection on.
-                wire.send(JSONObject().put("type", "hello").put("name", deviceName(this))
-                    .put("version", PROTOCOL).put("paired", known).put("at", address(socket.localAddress)))
+                val reply = JSONObject().put("type", "hello").put("name", deviceName(this))
+                    .put("version", PROTOCOL).put("paired", known).put("at", address(socket.localAddress))
+                // Our Wi-Fi Direct group, for a computer both sides know: it
+                // joins it when there is no network to share (PROTOCOL.md §0).
+                if (known && hello.optBoolean("paired")) WifiDirect.credentials(this).let { (ssid, passphrase) ->
+                    reply.put("p2p", JSONObject().put("ssid", ssid).put("passphrase", passphrase).put("at", WifiDirect.GROUP_OWNER))
+                }
+                wire.send(reply)
                 // Another version: the PC sees ours and says so to its user.
                 if (hello.optInt("version") != PROTOCOL) return
                 if (!known || !hello.optBoolean("paired")) {
@@ -386,8 +415,9 @@ class CompanionService : Service() {
         before?.end()
         session.start()
         try {
-            val mode = getSystemService(android.hardware.display.DisplayManager::class.java)
-                .getDisplay(android.view.Display.DEFAULT_DISPLAY).mode
+            // The refresh the panel will run at: DisplayActivity asks for its fastest.
+            val mode = DisplayActivity.fastestMode(getSystemService(android.hardware.display.DisplayManager::class.java)
+                .getDisplay(android.view.Display.DEFAULT_DISPLAY))
             wire.send(JSONObject().put("type", "display-ready").put("port", session.socket.localPort)
                 .put("width", maxOf(mode.physicalWidth, mode.physicalHeight))
                 .put("height", minOf(mode.physicalWidth, mode.physicalHeight))

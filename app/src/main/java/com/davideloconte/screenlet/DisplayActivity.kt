@@ -31,9 +31,17 @@ class DisplayActivity : Activity(), SurfaceHolder.Callback {
         instance = this
         window.addFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON)
         window.setPreferMinimalPostProcessing(true)  // a screen's game mode, where it has one
+        // The panel at its fastest refresh: a frame waits less for the next
+        // vsync (8 ms at 120 Hz, not 16), whatever rate the PC sends at.
+        val fastest = fastestMode(display)
         window.attributes = window.attributes.apply {
             layoutInDisplayCutoutMode = WindowManager.LayoutParams.LAYOUT_IN_DISPLAY_CUTOUT_MODE_ALWAYS
+            preferredDisplayModeId = fastest.modeId
         }
+        // Input goes to the PC straight from this thread (DisplayInput): a
+        // UDP send does not block, a hop to another thread costs more.
+        android.os.StrictMode.setThreadPolicy(android.os.StrictMode.ThreadPolicy.Builder(
+            android.os.StrictMode.getThreadPolicy()).permitNetwork().build())
         val view = SurfaceView(this)
         view.holder.addCallback(this)
         // The PC's monitor has the screen's proportions, held in landscape;
@@ -81,6 +89,10 @@ class DisplayActivity : Activity(), SurfaceHolder.Callback {
 
     override fun surfaceCreated(holder: SurfaceHolder) {
         surface = holder.surface
+        runCatching {
+            holder.surface.setFrameRate(fastestMode(display).refreshRate, Surface.FRAME_RATE_COMPATIBILITY_DEFAULT,
+                Surface.CHANGE_FRAME_RATE_ALWAYS)
+        }
         bind()
     }
 
@@ -132,6 +144,14 @@ class DisplayActivity : Activity(), SurfaceHolder.Callback {
     }
 
     companion object {
+        /** The display's mode at its native size with the highest refresh. */
+        fun fastestMode(display: android.view.Display): android.view.Display.Mode {
+            val now = display.mode
+            return display.supportedModes.filter {
+                it.physicalWidth == now.physicalWidth && it.physicalHeight == now.physicalHeight
+            }.maxByOrNull { it.refreshRate } ?: now
+        }
+
         // On the main thread only.
         private var instance: DisplayActivity? = null
 

@@ -51,6 +51,8 @@ android {
         }
     }
 
+    testOptions { unitTests.isReturnDefaultValues = true }
+
     compileOptions {
         sourceCompatibility = JavaVersion.VERSION_21
         targetCompatibility = JavaVersion.VERSION_21
@@ -60,4 +62,6 @@ android {
 dependencies {
     // Material 3 Expressive: the look of Android 16, in the wallpaper's colours.
     implementation("com.google.android.material:material:1.14.0")
+    testImplementation("junit:junit:4.13.2")
+    testImplementation("org.json:json:20250517")
 }
