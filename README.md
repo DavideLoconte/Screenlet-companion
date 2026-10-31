@@ -5,8 +5,9 @@
 The Android app of Screenlet: it turns a tablet (made for the Samsung Galaxy
 Tab and its S Pen) into a second display for your computer, over Wi-Fi or a
 USB-C cable, with the lowest latency it can get. The computer runs
-[Screenlet for macOS](https://github.com/DavideLoconte/Screenlet-macos) or
-[Screenlet for GNOME](https://github.com/DavideLoconte/Screenlet-gnome); they
+[Screenlet for macOS](https://github.com/DavideLoconte/Screenlet-macos),
+[Screenlet for GNOME](https://github.com/DavideLoconte/Screenlet-linux) or
+[Screenlet for Windows](https://github.com/DavideLoconte/Screenlet-windows); they
 speak the [Screenlet protocol](PROTOCOL.md).
 
 Screenlet started as a fork of
@@ -84,8 +85,13 @@ On first launch, allow the notifications (for the pairing code) and
 
 ## Future work
 
-- Computers on Windows and KDE, speaking the same protocol.
+- A computer on KDE, speaking the same protocol.
 
 ## License
 
 MIT, like Plus One. See [LICENSE](LICENSE).
+
+## AI disclosure
+
+Much of this code was written by Claude, Anthropic's AI model, through Claude Code, under
+the author's direction. The author chose what to build and tested it on real hardware.
