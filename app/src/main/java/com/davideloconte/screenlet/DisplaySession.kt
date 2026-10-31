@@ -127,7 +127,7 @@ class DisplaySession(key: ByteArray, private val pc: InetAddress, private var pc
         val configured = listOf(true, false).any { fast ->
             try {
                 decoder.setCallback(callback, handler)
-                decoder.configure(format(fast), surface, null, 0)
+                decoder.configure(format(decoder, fast), surface, null, 0)
                 true
             } catch (e: Exception) {
                 Log.i(CompanionService.TAG, "display: decoder refused ${if (fast) "the fast format" else "the format"}: $e")
@@ -153,7 +153,17 @@ class DisplaySession(key: ByteArray, private val pc: InetAddress, private var pc
         askedAt = 0L
     } }
 
-    private fun format(fast: Boolean) = MediaFormat.createVideoFormat(mime, MAX_WIDTH, MAX_HEIGHT).apply {
+    /** The most it may have to take, within what this decoder takes at all:
+     * a MediaTek one stops at 4096x2176 and refuses 3840x2400 outright. */
+    private fun largest(decoder: MediaCodec): Pair<Int, Int> {
+        val video = decoder.codecInfo.getCapabilitiesForType(mime).videoCapabilities
+        val width = minOf(MAX_WIDTH, video.supportedWidths.upper)
+        return width to minOf(MAX_HEIGHT, video.getSupportedHeightsFor(width).upper)
+    }
+
+    private fun format(decoder: MediaCodec, fast: Boolean) = largest(decoder).let { (width, height) ->
+        MediaFormat.createVideoFormat(mime, width, height)
+    }.apply {
         setInteger(MediaFormat.KEY_LOW_LATENCY, 1)
         setInteger(MediaFormat.KEY_PRIORITY, 0)
         setInteger(MediaFormat.KEY_MAX_INPUT_SIZE, 2 shl 20)
