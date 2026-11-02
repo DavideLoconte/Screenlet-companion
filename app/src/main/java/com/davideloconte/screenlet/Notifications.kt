@@ -7,6 +7,9 @@ import android.app.PendingIntent
 import android.content.Context
 import android.content.Intent
 
+/**
+ * Factory and dispatcher for system notifications, channels, and interactive actions.
+ */
 object Notifications {
     private const val SERVICE = "service"
     private const val ASK = "ask"
@@ -30,8 +33,7 @@ object Notifications {
             .setOngoing(true)
             .build()
 
-    /** The service's notification while a PC's desktop is shown here: back
-     * to it with a tap, or Stop. */
+    /** Builds the persistent foreground notification displayed while a desktop session is active. */
     fun displaying(context: Context, pc: String): Notification {
         val stop = PendingIntent.getBroadcast(context, 0,
             Intent(context, DisplayStopReceiver::class.java), PendingIntent.FLAG_IMMUTABLE)
@@ -46,7 +48,7 @@ object Notifications {
             .build()
     }
 
-    /** One per code (several PCs may pair at once); 1000 and up, clear of SERVICE_ID. */
+    /** Computes a unique notification identifier for the specified pairing verification code. */
     private fun pairingId(code: String) = 1000 + code.toInt()
 
     fun pairing(context: Context, pc: String, code: String, open: Intent) {

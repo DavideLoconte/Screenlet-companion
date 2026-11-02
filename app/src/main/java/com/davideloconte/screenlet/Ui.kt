@@ -20,22 +20,20 @@ import com.google.android.material.shape.ShapeAppearanceModel
 import kotlin.math.roundToInt
 import com.google.android.material.R as M
 
-/*
- * Material 3 pieces made in code, as all of the app's views are: text in
- * the type scale, buttons, rows grouped as Android 16's settings group
- * them, surfaces; each in the theme's colours (the wallpaper's).
+/**
+ * Programmatic Material 3 layout helpers, typography scales, dynamic color resolution, and segmented lists.
  */
 
 fun Context.dp(v: Int): Int = (v * resources.displayMetrics.density).roundToInt()
 fun Context.dp(v: Float): Float = v * resources.displayMetrics.density
 
-/** A colour of the theme: M.attr.colorSurfaceContainer... (colorPrimary is AppCompat's attribute). */
+/** Resolves a theme color attribute from the active contextual theme. */
 fun Context.themeColor(attr: Int): Int = MaterialColors.getColor(this, attr, Color.MAGENTA)
 
 private fun Context.resourceOf(attr: Int): Int =
     TypedValue().also { theme.resolveAttribute(attr, it, true) }.resourceId
 
-/** Text in a size of the type scale (M.attr.textAppearanceBodyLarge...), in a colour of the theme. */
+/** Constructs a TextView styled according to the specified typography appearance and theme color. */
 fun Context.label(text: CharSequence?, appearance: Int, color: Int = M.attr.colorOnSurface) = TextView(this).apply {
     setTextAppearance(resourceOf(appearance))
     setTextColor(themeColor(color))
@@ -59,7 +57,7 @@ fun Context.button(label: CharSequence, look: Look = Look.FILLED, icon: Int = 0,
         setOnClickListener(onClick)
     }
 
-/** An icon button; its description is also a tooltip (the S Pen hovers over it). */
+/** Constructs an icon-only MaterialButton configured with accessibility labels and tooltips. */
 fun Context.iconButton(icon: Int, description: Int, style: Int = M.attr.materialIconButtonStyle,
                        onClick: (View) -> Unit) =
     MaterialButton(this, null, style).apply {
@@ -69,30 +67,29 @@ fun Context.iconButton(icon: Int, description: Int, style: Int = M.attr.material
         setOnClickListener(onClick)
     }
 
-/** A rounded surface in a colour of the theme, for bars, popups and cards drawn by hand. */
+/** Generates a MaterialShapeDrawable with rounded corners filled with the theme surface color. */
 fun Context.surface(color: Int = M.attr.colorSurfaceContainer, radius: Float = dp(28f)) =
     MaterialShapeDrawable(ShapeAppearanceModel.builder().setAllCornerSizes(radius).build()).apply {
         fillColor = ColorStateList.valueOf(themeColor(color))
     }
 
-/** An icon from res/drawable in a colour of the theme. */
+/** Constructs an ImageView for a drawable resource tinted according to theme colors. */
 fun Context.icon(drawable: Int, color: Int = M.attr.colorOnSurfaceVariant, size: Int = 24) = ImageView(this).apply {
     setImageResource(drawable)
     imageTintList = ColorStateList.valueOf(themeColor(color))
     layoutParams = LinearLayout.LayoutParams(dp(size), dp(size))
 }
 
-/** A section's title over its group. */
+/** Constructs a styled section title header view. */
 fun Context.sectionTitle(text: CharSequence) = label(text, M.attr.textAppearanceTitleSmall, androidx.appcompat.R.attr.colorPrimary).apply {
     setPadding(dp(16), dp(28), dp(16), dp(10))
 }
 
-/** The theme's touch feedback, for views that draw themselves. */
+/** Resolves the platform selectable item background ripple drawable. */
 fun Context.ripple(borderless: Boolean = false) = AppCompatResources.getDrawable(this, resourceOf(
     if (borderless) android.R.attr.selectableItemBackgroundBorderless else android.R.attr.selectableItemBackground))
 
-/** A list row: a leading icon, a title and a supporting line, something at the end.
- * oneLine: a long title is cut in the middle (a file name's end tells it apart). */
+/** Constructs a standard list row container with leading icon, labels, and trailing controls. */
 fun Context.row(icon: Int, title: CharSequence, supporting: CharSequence? = null, trailing: View? = null,
                 oneLine: Boolean = false) =
     LinearLayout(this).apply {
@@ -116,8 +113,7 @@ fun Context.row(icon: Int, title: CharSequence, supporting: CharSequence? = null
             ViewGroup.LayoutParams.WRAP_CONTENT).apply { marginStart = dp(12) })
     }
 
-/** Rows as one group, Android 16's way: a card each, the group's ends
- * well rounded, slightly where rows meet; a row with onClick ripples. */
+/** Assembles a list of rows into a segmented Material card container. */
 fun Context.group(rows: List<Row>) = LinearLayout(this).apply {
     orientation = LinearLayout.VERTICAL
     rows.forEachIndexed { i, (content, onClick) ->
@@ -137,8 +133,7 @@ fun Context.group(rows: List<Row>) = LinearLayout(this).apply {
 data class Row(val view: View, val onClick: ((View) -> Unit)? = null)
 
 
-/** Whether one of the app's screens is in front: then it may open another
- * (the pairing question, the PC's desktop) without "display over other apps". */
+/** Tracks whether any application activity currently resides in the foreground. */
 object Front {
     private val count = java.util.concurrent.atomic.AtomicInteger()
     val shown get() = count.get() > 0
@@ -146,6 +141,6 @@ object Front {
     fun stopped() = count.decrementAndGet()
 }
 
-/** What the system bars and the display cutout cover of a window. */
+/** Computes insets occupied by system bars and display cutouts. */
 fun systemBars(insets: android.view.WindowInsets): android.graphics.Insets =
     insets.getInsets(android.view.WindowInsets.Type.systemBars() or android.view.WindowInsets.Type.displayCutout())

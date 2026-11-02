@@ -18,10 +18,9 @@ import java.util.concurrent.CountDownLatch
 import java.util.concurrent.TimeUnit
 import com.google.android.material.R as M
 
-/** Asking the user whether to pair with a PC, showing the code both screens
- * show: one question at a time, and none for a while after one was not
- * accepted, longer each time from the same address, so nobody on the
- * network can keep the screen covered (or wait for a mistaken tap). */
+/**
+ * Coordinates user pairing prompts, SAS numeric comparison, and anti-hammering rate limits.
+ */
 object Pairing {
     private class Request(val code: String, val pc: String) {
         val answered = CountDownLatch(1)
@@ -34,9 +33,7 @@ object Pairing {
     private val strikes = HashMap<String, Pair<Int, Long>>()  // address -> (questions not accepted, quiet until)
     private val main = Handler(Looper.getMainLooper())
 
-    /** Blocks the calling (connection) thread until the user answers, two
-     * minutes at most: whether they accepted; null when no question may be
-     * asked now (another is up, or one from there was just not accepted). */
+    /** Blocks the calling thread until the user accepts or rejects the pairing confirmation code. */
     fun ask(context: Context, pc: String, code: String, from: String): Boolean? {
         val request = Request(code, pc)
         synchronized(this) {
@@ -71,10 +68,10 @@ object Pairing {
         return accepted
     }
 
-    /** The PC's name, while its pairing waits for an answer. */
+    /** Returns the name of the host requesting pairing for the specified verification code. */
     fun pending(code: String): String? = current?.takeIf { it.code == code }?.pc
 
-    /** The user's answer, or the PC's refusal (which ends the question here too). */
+    /** Records the user or host acceptance decision for the active pairing code. */
     fun answer(code: String, accepted: Boolean) {
         current?.takeIf { it.code == code }?.let {
             it.accepted = accepted
@@ -82,7 +79,7 @@ object Pairing {
         }
     }
 
-    /** close runs (on the main thread) when the question is over, however it ended. */
+    /** Registers a callback to be invoked on the main thread upon prompt dismissal. */
     fun onClose(code: String, close: () -> Unit) {
         current?.takeIf { it.code == code }?.close = close
     }
@@ -90,8 +87,7 @@ object Pairing {
     private const val QUIET = 10_000L  // ms without questions after one was not accepted
 }
 
-/** The pairing question, over whatever is on screen. Its own layout: an
- * AlertDialog inside a dialog-themed activity was dismissed as it opened. */
+/** Full-screen overlay activity presenting the 6-digit pairing code for user confirmation. */
 class PairActivity : AppCompatActivity() {
     private var pair: android.view.View? = null
     private val arm = Runnable { pair?.isEnabled = true }
@@ -148,9 +144,7 @@ class PairActivity : AppCompatActivity() {
         window.setLayout(minOf(resources.displayMetrics.widthPixels - dp(48), dp(400)), ViewGroup.LayoutParams.WRAP_CONTENT)
     }
 
-    /** A tap meant for what was under the question when it opened is not a
-     * yes (an app here could time the question to come under a finger): Pair
-     * works a moment after it is in front, and again after anything covered it. */
+    /** Temporarily disables confirmation actions on focus changes to prevent accidental taps. */
     override fun onWindowFocusChanged(hasFocus: Boolean) {
         super.onWindowFocusChanged(hasFocus)
         val pair = pair ?: return
@@ -165,7 +159,7 @@ class PairActivity : AppCompatActivity() {
     }
 }
 
-/** The pairing notification's buttons. */
+/** Broadcast receiver handling pairing confirmation actions triggered from notifications. */
 class PairingReceiver : BroadcastReceiver() {
     override fun onReceive(context: Context, intent: Intent) {
         val code = intent.getStringExtra(PairActivity.EXTRA_CODE) ?: return
@@ -178,7 +172,7 @@ class PairingReceiver : BroadcastReceiver() {
     }
 }
 
-/** Ready again after a restart, and after an update (which stops the app). */
+/** Broadcast receiver restoring the companion service on device boot or package replacement. */
 class BootReceiver : BroadcastReceiver() {
     override fun onReceive(context: Context, intent: Intent) {
         val again = intent.action == Intent.ACTION_BOOT_COMPLETED || intent.action == Intent.ACTION_MY_PACKAGE_REPLACED

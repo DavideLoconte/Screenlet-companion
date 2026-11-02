@@ -5,10 +5,11 @@ import javax.crypto.spec.GCMParameterSpec
 import javax.crypto.spec.SecretKeySpec
 
 /**
- * Packets sealed with AES-GCM under a session's key, which the PC handed over
- * the paired TLS link: nonce (12 bytes: direction u32, count u64) | sealed body.
- * Nothing is allocated per packet but the GCM parameters: both directions
- * write into buffers the caller keeps.
+ * Encrypts and decrypts datagram packets using AES-128-GCM authentication.
+ *
+ * Each encrypted packet includes a 12-byte nonce containing stream direction and sequence number,
+ * followed by ciphertext and a 16-byte authentication tag. Maintains replay protection state
+ * via a 64-packet sliding window filter.
  */
 class Sealed(key: ByteArray) {
     private val key = SecretKeySpec(key, "AES")
@@ -17,9 +18,7 @@ class Sealed(key: ByteArray) {
     private var sent = 0L
     private val replay = Replay()
 
-    /** Opens packet[0, length) from the PC into out: the body's length, or
-     * -1 if it is not one sealed with this key, or a replay. Only ever from
-     * one thread at a time (the socket's or the cable's). */
+    /** Authenticates and decrypts an incoming packet buffer, verifying against the replay filter. */
     @Synchronized
     fun open(packet: ByteArray, length: Int, out: ByteArray): Int {
         if (length < NONCE + TAG + 1 || length - NONCE - TAG > out.size || readInt(packet, 0) != FROM_PC) return -1
@@ -33,7 +32,7 @@ class Sealed(key: ByteArray) {
         }
     }
 
-    /** body[0, length) sealed into out: the packet's length. */
+    /** Encrypts and authenticates an outgoing payload into the destination buffer. */
     @Synchronized
     fun seal(body: ByteArray, length: Int, out: ByteArray): Int {
         writeInt(out, 0, FROM_APP)
@@ -42,8 +41,7 @@ class Sealed(key: ByteArray) {
         return NONCE + sealer.doFinal(body, 0, length, out, NONCE)
     }
 
-    /** The counts accepted: the highest, and a window of 64 below it, so a
-     * packet Wi-Fi delivered a little late is taken, one heard before never. */
+    /** Sliding-window replay protection filter tracking sequence numbers across a 64-packet history. */
     class Replay {
         private var highest = -1L
         private var window = 0L  // bit i: highest - i was accepted

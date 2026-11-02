@@ -14,10 +14,12 @@ import android.view.WindowInsetsController
 import android.view.WindowManager
 import android.widget.FrameLayout
 
-/** The PC's desktop, on the whole screen: the session in progress
- * (DisplaySession.current) decodes into this activity's surface while it
- * is shown. One activity: a new session takes it over (onNewIntent), as its
- * surface stays the same. */
+/**
+ * Full-screen display activity rendering video frames onto a dedicated hardware surface.
+ *
+ * Directs decoded frames from the active [DisplaySession] to an underlying [SurfaceView]
+ * configured for maximum refresh rate and minimum post-processing latency.
+ */
 class DisplayActivity : Activity(), SurfaceHolder.Callback {
     private var surface: Surface? = null
     private var session: DisplaySession? = null  // the one decoding into the surface
@@ -104,7 +106,7 @@ class DisplayActivity : Activity(), SurfaceHolder.Callback {
         surface = null
     }
 
-    /** The session in progress into the surface, if both are there. */
+    /** Attaches the active display session to the available rendering surface. */
     private fun bind() {
         val current = DisplaySession.current ?: return finish()
         mine = current
@@ -117,7 +119,7 @@ class DisplayActivity : Activity(), SurfaceHolder.Callback {
         current.show(true)
     }
 
-    /** child at aspect (width / height), as large as fits, centred on black. */
+    /** Custom layout container preserving target aspect ratio with black letterbox borders. */
     private class Letterbox(context: Context, private val child: View, private val aspect: Float) :
         FrameLayout(context) {
         init {
@@ -144,7 +146,7 @@ class DisplayActivity : Activity(), SurfaceHolder.Callback {
     }
 
     companion object {
-        /** The display's mode at its native size with the highest refresh. */
+        /** Selects the display mode providing native physical resolution at the highest refresh rate. */
         fun fastestMode(display: android.view.Display): android.view.Display.Mode {
             val now = display.mode
             return display.supportedModes.filter {
@@ -155,9 +157,7 @@ class DisplayActivity : Activity(), SurfaceHolder.Callback {
         // On the main thread only.
         private var instance: DisplayActivity? = null
 
-        /** On the main thread: a session ended. The activity goes, unless a
-         * newer session is there to take it over (its startActivity() comes
-         * as onNewIntent()). */
+        /** Handles session termination on the main thread, finishing the activity if no active session remains. */
         fun ended(session: DisplaySession) {
             val activity = instance ?: return
             if (DisplaySession.current?.takeIf { it !== session } == null) activity.finish()

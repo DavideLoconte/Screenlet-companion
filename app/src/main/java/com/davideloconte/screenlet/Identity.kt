@@ -16,10 +16,11 @@ import javax.net.ssl.X509TrustManager
 import javax.security.auth.x500.X500Principal
 
 /**
- * The app's TLS identity: an EC key kept by Android's keystore (it never
- * leaves it) with a self-signed certificate. Peers are not checked by a CA:
- * each side remembers the other's certificate once the user has compared
- * the pairing code (see pairingCode).
+ * Manages device TLS identity credentials and short authentication string pairing verification.
+ *
+ * Generates and stores hardware-backed elliptic curve private keys and self-signed certificates
+ * in the Android KeyStore. Provides custom SSLContext configurations for mutual authentication
+ * and calculates numeric SAS verification codes for pairing confirmation.
  */
 object Identity {
     private const val ALIAS = "screenlet-tls"
@@ -48,10 +49,7 @@ object Identity {
         }
     }
 
-    /** A TLS context presenting our certificate and accepting any peer's:
-     * no CA vouches for either side, so the peer's certificate is checked
-     * after the handshake, against the paired list or by the user
-     * comparing the pairing code (CompanionService.handle). */
+    /** Initializes an SSLContext presenting the local certificate and permitting peer trust validation at application level. */
     @android.annotation.SuppressLint("CustomX509TrustManager", "TrustAllX509TrustManager")
     fun sslContext(): SSLContext {
         certificate  // created if needed
@@ -67,10 +65,7 @@ object Identity {
     fun fingerprint(der: ByteArray): String =
         MessageDigest.getInstance("SHA-256").digest(der).joinToString("") { "%02x".format(it) }
 
-    /** Six digits both screens show while pairing: the same only if each
-     * side got the other's certificate untouched; pcNonce and appNonce are
-     * the two sides' random numbers, the app's committed to before it saw
-     * the PC's. */
+    /** Derives a 6-digit numeric Short Authentication String (SAS) code from mutual certificates and nonces. */
     fun pairingCode(a: ByteArray, b: ByteArray, pcNonce: ByteArray, appNonce: ByteArray): String {
         val (first, second) = if (compare(a, b) <= 0) a to b else b to a
         val digest = MessageDigest.getInstance("SHA-256").apply {
@@ -81,7 +76,7 @@ object Identity {
         return "%06d".format(number % 1_000_000)
     }
 
-    /** What the app sends before it learns the PC's number: binds its own. */
+    /** Computes a cryptographic hash commitment over the local nonce and peer certificates. */
     fun commitment(nonce: ByteArray, appCert: ByteArray, pcCert: ByteArray): String =
         MessageDigest.getInstance("SHA-256").apply { update(nonce); update(appCert); update(pcCert) }
             .digest().joinToString("") { "%02x".format(it) }

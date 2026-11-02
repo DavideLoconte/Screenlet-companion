@@ -1,15 +1,11 @@
 package com.davideloconte.screenlet
 
 /**
- * Frames put back together from VIDEO bodies, in place: each packet's video
- * bytes are copied once, straight to where they go in the frame. Every packet
- * of a frame but its last carries the same number of bytes (PROTOCOL.md §3.3:
- * 16338 in large packets, 1426 in small ones), so a packet's place is its
- * index times that; a last packet that comes before any other waits aside.
- * A few frames may be on the way at once (Wi-Fi reorders); when one is whole,
- * those older still missing a packet are lost. Plain Kotlin: tested on the JVM.
+ * Reassembles fragmented video frames from received binary packet payloads.
  *
- * VIDEO body: kind u8 | flags u8 (1: keyframe) | frame u32 | index u16 | count u16 | captured i64 | video
+ * Copies incoming frame slices directly into preallocated contiguous frame buffers based on
+ * packet index and uniform payload slice size. Maintains a fixed sliding window of active
+ * frame slots and tracks dropped or incomplete frame sequences.
  */
 class Frames(private val clock: () -> Long = System::nanoTime) {
     class Frame {
@@ -49,11 +45,10 @@ class Frames(private val clock: () -> Long = System::nanoTime) {
 
     private val slots = Array(SLOTS) { Frame() }
     private var newest = -1L  // the newest frame handed out whole
-    /** Frames lost since this was last read and reset. */
+    /** Cumulative count of lost or incomplete frames since the previous reset. */
     var lost = 0
 
-    /** A VIDEO body (from its kind byte, length bytes): the frame it
-     * completed, valid until the next call, or null. */
+    /** Integrates a video packet payload and returns the completed frame if all slices have arrived. */
     fun add(body: ByteArray, length: Int): Frame? {
         if (length < HEADER) return null
         val keyframe = body[1].toInt() and 1 != 0

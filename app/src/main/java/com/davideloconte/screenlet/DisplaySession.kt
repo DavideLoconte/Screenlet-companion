@@ -13,18 +13,11 @@ import java.net.InetAddress
 import java.util.concurrent.ConcurrentLinkedQueue
 
 /**
- * The PC's desktop on this screen. The PC sends each encoded frame as soon
- * as it has it, cut into UDP packets (or cable datagrams) sealed with AES-GCM
- * under a key it handed over the paired TLS link. A frame goes to MediaCodec
- * the moment it is whole and is shown the moment it is decoded: no jitter
- * buffer. A frame with a packet missing is dropped and a keyframe asked for.
+ * Manages video frame reception, cryptographic unpacking, and MediaCodec decoding.
  *
- * The hot path (receive, open, put together, into the decoder) runs on one
- * thread at display priority with buffers it keeps: no allocation, no lock
- * shared with slow work (attach() and detach() take only codecLock).
- *
- * Times are each side's monotonic clock in ns; PING and PONG tell the
- * offset, so each stage is measured, not guessed (see stats()).
+ * Processes encrypted UDP or USB datagrams received from the host, reassembles multi-packet
+ * video frames, and feeds them directly into an asynchronous hardware decoder without jitter
+ * buffering. Tracks end-to-end latency metrics and transmits periodic performance telemetry.
  */
 class DisplaySession(key: ByteArray, private val pc: InetAddress, private var pcPort: Int,
                      private val mime: String = MediaFormat.MIMETYPE_VIDEO_AVC) {
@@ -86,7 +79,7 @@ class DisplaySession(key: ByteArray, private val pc: InetAddress, private var pc
         ticker.interrupt()
     }
 
-    /** The screen to show it on (DisplayActivity's surface). */
+    /** Binds the hardware video decoder to the specified rendering surface. */
     fun attach(surface: Surface) { synchronized(codecLock) {
         detach()
         this.surface = surface
@@ -153,8 +146,7 @@ class DisplaySession(key: ByteArray, private val pc: InetAddress, private var pc
         askedAt = 0L
     } }
 
-    /** The most it may have to take, within what this decoder takes at all:
-     * a MediaTek one stops at 4096x2176 and refuses 3840x2400 outright. */
+    /** Computes maximum supported dimensions for the decoder clamped to upper capability limits. */
     private fun largest(decoder: MediaCodec): Pair<Int, Int> {
         val video = decoder.codecInfo.getCapabilitiesForType(mime).videoCapabilities
         val width = minOf(MAX_WIDTH, video.supportedWidths.upper)
@@ -212,8 +204,7 @@ class DisplaySession(key: ByteArray, private val pc: InetAddress, private var pc
         }
     }
 
-    /** A datagram the cable brought (the cable's thread, at display
-     * priority): the replies go back through it. */
+    /** Ingests an encrypted datagram received over the USB accessory tunnel. */
     fun fromTunnel(packet: ByteArray, length: Int, tunnel: (ByteArray, Int) -> Unit) {
         if (opened(packet, length)) this.tunnel = tunnel
     }
@@ -323,7 +314,7 @@ class DisplaySession(key: ByteArray, private val pc: InetAddress, private var pc
         send(b, b.size)
     }
 
-    /** Every second a ping for the clocks and the measures; hidden, now and then a ping. */
+    /** Periodic background worker transmitting timing pings and latency telemetry to the host. */
     private fun tick() {
         var ticks = 0
         while (running) {
@@ -342,9 +333,7 @@ class DisplaySession(key: ByteArray, private val pc: InetAddress, private var pc
     private val sending = ByteArray(2048)
     private val outgoing = DatagramPacket(sending, 0)
 
-    /** body to the PC, sealed, from any thread: input from the main one,
-     * which may use the network for it (DisplayActivity): a UDP send does
-     * not wait, and a hop to another thread would cost more than it. */
+    /** Encrypts and transmits a control or input payload to the connected host. */
     @Synchronized
     fun send(body: ByteArray, length: Int) {
         if (!running) return
@@ -375,15 +364,13 @@ class DisplaySession(key: ByteArray, private val pc: InetAddress, private var pc
         const val HIDDEN_PING_EVERY = 10        // ticks (seconds)
         const val MAX_PENDING = 3               // whole frames waiting for the decoder: 50 ms at 60 fps
 
-        /** Whether a decoder (a hardware one, if hardware) takes mime at 1080p. */
+        /** Queries whether the system provides a decoder matching the MIME type capable of 1080p playback. */
         fun decodes(mime: String, hardware: Boolean) = android.media.MediaCodecList(android.media.MediaCodecList.REGULAR_CODECS).codecInfos.any { info ->
             !info.isEncoder && (!hardware || info.isHardwareAccelerated) && info.supportedTypes.any { it.equals(mime, ignoreCase = true) } &&
                 runCatching { info.getCapabilitiesForType(mime).videoCapabilities?.isSizeSupported(1920, 1080) == true }.getOrDefault(false)
         }
 
-        /** This tablet's hardware decoders (PROTOCOL.md §3): codec name -> the
-         * frames per second each sustains at width x height, as the device
-         * measured it where it did, as its maker declares otherwise. */
+        /** Evaluates maximum sustainable frame rates across hardware decoders for given dimensions. */
         fun profile(width: Int, height: Int) = org.json.JSONObject().apply {
             for ((name, mime) in CompanionService.CODECS) {
                 val fps = android.media.MediaCodecList(android.media.MediaCodecList.REGULAR_CODECS).codecInfos
@@ -402,7 +389,7 @@ class DisplaySession(key: ByteArray, private val pc: InetAddress, private var pc
     }
 }
 
-/** The display notification's Stop. */
+/** Broadcast receiver handling user termination from the foreground display notification. */
 class DisplayStopReceiver : android.content.BroadcastReceiver() {
     override fun onReceive(context: android.content.Context, intent: android.content.Intent) {
         DisplaySession.current?.end()

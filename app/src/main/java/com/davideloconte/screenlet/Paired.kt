@@ -2,12 +2,11 @@ package com.davideloconte.screenlet
 
 import android.content.Context
 
-/** The app's own settings. */
+/** Persistent application configuration stored in shared preferences. */
 object Options {
     private const val PREFS = "options"
 
-    /** Ready for the PC all the time (and after a restart), or only for a
-     * while after the app was opened. */
+    /** Checks whether the companion service is configured to remain persistently ready. */
     fun alwaysReady(context: Context) =
         context.getSharedPreferences(PREFS, Context.MODE_PRIVATE).getBoolean("always", true)
 
@@ -16,7 +15,7 @@ object Options {
 
 }
 
-/** PCs the user paired with: certificate fingerprint -> name. */
+/** Persistent registry of paired host devices keyed by certificate fingerprint. */
 object Paired {
     private const val PREFS = "paired"
 

@@ -11,7 +11,7 @@ import javax.crypto.Cipher
 import javax.crypto.spec.GCMParameterSpec
 import javax.crypto.spec.SecretKeySpec
 
-/** The shared vectors (PROTOCOL.md, vectors.json) and each piece of the hot path. */
+/** Unit and regression tests verifying wire protocol test vectors and hot-path processing. */
 class ProtocolTest {
     private val SMALL = 1426    // video bytes in a small packet (PROTOCOL.md §3.3)
     private val LARGE = 16338   // and in a large one
@@ -161,7 +161,7 @@ class ProtocolTest {
         assertEquals(0, Sealed.readInt(t.stats(), 1))  // counts start again
     }
 
-    /** The receiving thread's cost per packet (open, put together), printed and bounded. */
+    /** Benchmarks per-packet processing throughput across decryption and frame reassembly. */
     @Test fun hotPathCostPerPacket() {
         val key = ByteArray(32)
         val pc = Cipher.getInstance("AES/GCM/NoPadding")

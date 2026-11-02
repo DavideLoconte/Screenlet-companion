@@ -6,9 +6,10 @@ import android.hardware.usb.UsbManager
 import android.os.Bundle
 
 /**
- * Nothing to see: Android opens it when the PC on the cable asks for Plus
- * One (Android Open Accessory, res/xml/accessory_filter.xml), once the user
- * lets it the first time. The accessory goes to the service (UsbTunnel).
+ * Trampoline activity launched by Android upon USB accessory attachment.
+ *
+ * Extracts the [UsbAccessory] instance from the launch intent, forwards it to
+ * [CompanionService] to establish the communication tunnel, and finishes immediately.
  */
 class UsbActivity : Activity() {
     override fun onCreate(savedInstanceState: Bundle?) {

@@ -26,11 +26,11 @@ import javax.net.ssl.SSLServerSocket
 import javax.net.ssl.SSLSocket
 
 /**
- * Always ready for the computer: listens over TLS on the home network and
- * says so with mDNS (_screenlet._tcp), and takes the computer's links over
- * the USB cable (UsbTunnel), so Screenlet on the computer can show its
- * desktop here. A foreground service (Android shows it as a quiet
- * notification); it does nothing until the computer connects.
+ * Foreground service managing incoming host connections and network discovery.
+ *
+ * Listens for TLS connections over local IP networks, advertises availability via mDNS
+ * (`_screenlet._tcp`), and accepts USB accessory transport channels to enable desktop
+ * display streaming. Runs as an Android foreground service with minimal idle overhead.
  */
 class CompanionService : Service() {
     @Volatile private var server: SSLServerSocket? = null
@@ -66,9 +66,7 @@ class CompanionService : Service() {
         }, RECEIVER_NOT_EXPORTED)
     }
 
-    /** Android left accessory mode (the PC reset the cable, or it was
-     * unplugged): the accessory is let go. Held, it keeps /dev/usb_accessory
-     * busy, and the PC's next request to become an accessory fails. */
+    /** Broadcast receiver handling USB accessory detachment to release underlying device resources. */
     private val usbGone = object : BroadcastReceiver() {
         override fun onReceive(context: Context, intent: Intent) {
             if (intent.action == USB_STATE && intent.getBooleanExtra("accessory", false)) return
@@ -81,15 +79,14 @@ class CompanionService : Service() {
         }
     }
 
-    /** The Wi-Fi networks the tablet is on: none, and its own Wi-Fi Direct group comes up. */
+    /** Active Wi-Fi networks monitored to determine whether Wi-Fi Direct fallback is required. */
     private val wifiNetworks = ConcurrentHashMap.newKeySet<android.net.Network>()
     private val wifi = object : android.net.ConnectivityManager.NetworkCallback() {
         override fun onAvailable(network: android.net.Network) { wifiNetworks.add(network); direct() }
         override fun onLost(network: android.net.Network) { wifiNetworks.remove(network); direct() }
     }
 
-    /** Wi-Fi Direct only when nothing else reaches the computer: the group's
-     * radio time would slow a Wi-Fi network down, and the cable needs none. */
+    /** Activates or deactivates Wi-Fi Direct group owner mode based on network availability. */
     private fun direct() = handler.post {
         if (stopped) return@post
         val needed = wifiNetworks.isEmpty() && synchronized(this) { usb == null }
@@ -190,7 +187,7 @@ class CompanionService : Service() {
         }
     }
 
-    /** A PC's connection, from the network or the cable (UsbTunnel). */
+    /** Dispatches an incoming host connection received from the network or USB tunnel. */
     fun accept(client: SSLSocket) {
         // Connections not through TLS yet, few at a time: strangers that
         // never finish their handshake cannot take every thread from a paired PC.
@@ -207,7 +204,7 @@ class CompanionService : Service() {
         }
     }
 
-    /** The PC over the USB cable, the accessory Android just handed to UsbActivity. */
+    /** Opens an Android USB accessory endpoint and initiates the multiplexing tunnel. */
     private fun openUsb(accessory: UsbAccessory) {
         val fd = getSystemService(UsbManager::class.java).openAccessory(accessory)
         if (fd == null) {
@@ -222,16 +219,13 @@ class CompanionService : Service() {
         direct()
     }
 
-    /** The PC's accessory, left on the cable while the app was not running
-     * (Android hands it over only when it attaches): this app's to open. */
+    /** Queries currently attached USB accessories matching the Screenlet protocol identifier. */
     private fun pluggedUsb(): UsbAccessory? {
         val manager = getSystemService(UsbManager::class.java)
         return manager.accessoryList?.firstOrNull { it.manufacturer == ACCESSORY && manager.hasPermission(it) }
     }
 
-    /** The PC resets the cable's link to start afresh, and Android may keep
-     * the accessory through it (no new UsbActivity): opened again while it
-     * is there. Unplugged, it is not, and nothing happens. */
+    /** Attempts to reopen the USB accessory following a connection reset. */
     private fun reopenUsb(accessory: UsbAccessory, tries: Int) {
         handler.postDelayed({
             val manager = getSystemService(UsbManager::class.java)
@@ -269,8 +263,7 @@ class CompanionService : Service() {
         (getSystemService(NSD_SERVICE) as NsdManager).registerService(info, NsdManager.PROTOCOL_DNS_SD, listener)
     }
 
-    /** One PC: hello, pairing if either side does not know the other and the
-     * PC asks to pair (its user chose this tablet), then its requests. */
+    /** Processes an established client TLS connection, performing handshake and message dispatch. */
     private fun handle(socket: SSLSocket) {
         busy.incrementAndGet()
         lastUse = System.currentTimeMillis()
@@ -355,8 +348,7 @@ class CompanionService : Service() {
     private val handshaking = AtomicInteger()
     private val links = ConcurrentHashMap<String, MutableSet<SSLSocket>>()
 
-    /** The user forgot this PC: what it has open ends now (its desktop on
-     * screen), not when it happens to hang up. */
+    /** Terminates all active connections associated with a forgotten host identity. */
     fun disconnect(fingerprint: String) {
         links.remove(fingerprint)?.forEach { runCatching { it.close() } }
     }
@@ -382,9 +374,7 @@ class CompanionService : Service() {
         }
     }
 
-    /** The PC's desktop on this screen (DisplaySession, DisplayActivity),
-     * until the PC hangs up or says stop. The key for its packets comes
-     * over this paired link, fresh for each session. */
+    /** Manages an active display streaming session for a connected host until terminated. */
     private fun display(socket: SSLSocket, wire: Wire, request: JSONObject, pc: String) {
         val key = request.optString("key").chunked(2).mapNotNull { it.toIntOrNull(16)?.toByte() }.toByteArray()
         val port = request.optInt("port")
@@ -442,13 +432,11 @@ class CompanionService : Service() {
 
     @Volatile private var displaying: String? = null  // the PC whose desktop is shown
 
-    /** What the notification says, when only that changed. */
+    /** Updates the persistent foreground service notification state. */
     private fun showNotification() =
         getSystemService(android.app.NotificationManager::class.java).notify(Notifications.SERVICE_ID, notification())
 
-    /** Numeric comparison: the app commits to its random number, learns the
-     * PC's, shows its own; both screens then show a code made of the two
-     * certificates and the two numbers, and the user confirms it on both. */
+    /** Executes numeric comparison SAS pairing with the host over the control channel. */
     private fun pair(socket: SSLSocket, wire: Wire, pc: ByteArray, pcName: String,
                      guard: java.util.concurrent.ScheduledFuture<*>): Boolean {
         val mine = Identity.certificate.encoded
@@ -476,19 +464,17 @@ class CompanionService : Service() {
         return accepted && answer.get() == "pair-ok"
     }
 
-    /** Whether a connection comes from this tablet: loopback, or one of its
-     * own addresses (an app here can reach the Wi-Fi one too). */
+    /** Determines whether the specified network address originates from the local device. */
     private fun fromHere(address: java.net.InetAddress?): Boolean =
         address == null || address.isLoopbackAddress || address.isAnyLocalAddress ||
             runCatching { java.net.NetworkInterface.getByInetAddress(address) != null }.getOrDefault(false)
 
-    /** The PC's name as it says it, to be read: no control characters, none
-     * that turn the text around them (U+202E and the like), not too long. */
+    /** Sanitizes a host device name string for safe display. */
     private fun readable(name: String): String =
         name.filter { !Character.isISOControl(it) && Character.getType(it) != Character.FORMAT.toInt() }
             .trim().take(64).ifEmpty { "PC" }
 
-    /** An address as the PC writes it: IPv4 without the "::ffff:" prefix, no scope. */
+    /** Formats an IP address for protocol messages, stripping IPv6-mapped prefixes. */
     private fun address(address: java.net.InetAddress): String =
         address.hostAddress.orEmpty().substringBefore('%').removePrefix("::ffff:")
 
@@ -508,7 +494,7 @@ class CompanionService : Service() {
         const val LISTEN_RETRY = 30_000L       // ms before trying to listen again
         const val HANDSHAKE_DEADLINE = 20_000L // ms for an unknown peer's whole handshake
         const val HANDSHAKE_TIMEOUT = 20_000   // ms for TLS, hello and the pairing messages
-        /** The codecs of PROTOCOL.md §3.3, by name. */
+        /** Supported video codecs mapped to Android MIME types. */
         val CODECS = mapOf(
             "avc" to android.media.MediaFormat.MIMETYPE_VIDEO_AVC,
             "hevc" to android.media.MediaFormat.MIMETYPE_VIDEO_HEVC,
@@ -528,14 +514,14 @@ class CompanionService : Service() {
         fun deviceName(context: Context): String =
             Settings.Global.getString(context.contentResolver, Settings.Global.DEVICE_NAME) ?: Build.MODEL
 
-        /** The running service, for the activities that talk to it. */
+        /** Active service instance reference for bound components. */
         @Volatile var instance: CompanionService? = null
 
         fun start(context: Context) {
             context.startForegroundService(Intent(context, CompanionService::class.java))
         }
 
-        /** Started (if it is not) with the PC's USB accessory to open. */
+        /** Launches the companion service with an attached USB accessory intent. */
         fun startUsb(context: Context, accessory: UsbAccessory) {
             context.startForegroundService(Intent(context, CompanionService::class.java)
                 .putExtra(UsbManager.EXTRA_ACCESSORY, accessory))

@@ -9,11 +9,10 @@ import android.util.Log
 import java.security.SecureRandom
 
 /**
- * With no Wi-Fi network to share with the PC (nor a cable), the tablet makes
- * one: a Wi-Fi Direct group it owns, with a name and passphrase of its own,
- * which paired PCs learn in the hello (never an unpaired one) and join as an
- * ordinary Wi-Fi network. The tablet is then at GROUP_OWNER, and the link is
- * the same TLS as over any network.
+ * Manages autonomous Wi-Fi Direct peer-to-peer group creation and network credentials.
+ *
+ * Configures the device as a Wi-Fi Direct group owner when no shared infrastructure network
+ * is available, allowing paired hosts to connect directly via WPA2-PSK on 5 GHz or 2.4 GHz bands.
  */
 object WifiDirect {
     const val GROUP_OWNER = "192.168.49.1"  // Android's, always
@@ -22,7 +21,7 @@ object WifiDirect {
     @Volatile var up = false
         private set
 
-    /** The group's name and passphrase, made once. */
+    /** Generates or loads persistent WPA2 credentials for the autonomous peer-to-peer group. */
     fun credentials(context: Context): Pair<String, String> {
         val prefs = context.getSharedPreferences(PREFS, Context.MODE_PRIVATE)
         prefs.getString("ssid", null)?.let { ssid -> return ssid to prefs.getString("passphrase", "")!! }

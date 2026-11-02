@@ -1,19 +1,11 @@
 package com.davideloconte.screenlet
 
 /**
- * Where each frame's time goes on this side, measured stage by stage and
- * sent to the PC once a second (STATS), which adds its own (capture to
- * encoded to sent). With the clocks aligned by PING/PONG (the PC's minus
- * ours: offset), the PC's capture time is comparable with ours.
+ * Measures per-frame latency metrics across individual transport and decoding stages.
  *
- * STATS: kind | shown u32 | lost u32 | then for each stage, in tenths of a
- * millisecond (u16), median, 90th percentile, highest:
- *   0 capture -> decoded      (the whole way, clocks aligned)
- *   1 capture -> first packet (the PC's work and the network, clocks aligned)
- *   2 first -> last packet    (the frame spread over the network)
- *   3 last packet -> queued   (waiting for a decoder buffer)
- *   4 queued -> decoded       (the decoder)
- * Plain Kotlin: tested on the JVM.
+ * Synchronizes client and host monotonic clocks via round-trip ping-pong exchanges,
+ * records interval timings across five discrete rendering pipeline phases, and generates
+ * periodic statistical telemetry containing quantile distributions.
  */
 class Timing {
     private class Record(var number: Long = -1, var captured: Long = 0, var first: Long = 0,
@@ -76,7 +68,7 @@ class Timing {
         }
     }
 
-    /** The STATS body for the second just ended; counts start again. */
+    /** Compiles a binary statistical telemetry payload covering the preceding measurement interval. */
     @Synchronized
     fun stats(): ByteArray {
         val b = ByteArray(SIZE)

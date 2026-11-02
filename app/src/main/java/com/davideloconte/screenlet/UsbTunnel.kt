@@ -17,16 +17,10 @@ import java.util.concurrent.TimeUnit
 import javax.net.ssl.SSLSocket
 
 /**
- * Screenlet over the USB cable (Android Open Accessory): the PC is the USB
- * host and this tablet its accessory. One bulk stream
- * carries what the network would: the PC's TLS connections, each handed to
- * CompanionService as if it had come over the network, and the display's
- * sealed datagrams. Pairing, TLS and AES-GCM stay end to end: the cable is
- * trusted with nothing, and no socket here listens for other apps.
+ * Multiplexes control connections and video datagrams over an Android Open Accessory USB stream.
  *
- * A frame: kind u8 | connection u8 | length u32 (big-endian) | data.
- * HELLO from the PC starts afresh (what was open before is closed) and is
- * answered with HELLO, so the PC knows the app reads.
+ * Encapsulates TLS control streams and video datagram packets across a single bulk endpoint,
+ * bridging logical connections to local loopback socket pairs with end-to-end encryption.
  */
 class UsbTunnel(
     private val service: CompanionService,
@@ -102,8 +96,7 @@ class UsbTunnel(
         if (broken) onBroken()
     }
 
-    /** A connection from the PC: a loopback pipe, its far end through TLS
-     * as the server, to the service as any other connection. */
+    /** Establishes a loopback pipe pair and presents the connection to the companion service as a TLS socket. */
     private fun open(id: Int) {
         close(id, tell = false)
         val (ours, theirs) = try { pipe() } catch (e: Exception) {
@@ -143,8 +136,7 @@ class UsbTunnel(
         for (id in pipes.keys.toList()) close(id, tell = false)
     }
 
-    /** Two connected loopback sockets. Another app may connect to the
-     * port for that instant too: only the one from our own end is taken. */
+    /** Creates a connected pair of loopback TCP sockets verified against rogue local connections. */
     private fun pipe(): Pair<Socket, Socket> = ServerSocket(0, 4, loopback).use { server ->
         server.soTimeout = PIPE_TIMEOUT
         val ours = Socket(loopback, server.localPort).apply { tcpNoDelay = true }
@@ -156,7 +148,7 @@ class UsbTunnel(
         @Suppress("UNREACHABLE_CODE") error("unreachable")
     }
 
-    /** One frame, whole, from any thread. */
+    /** Encodes and transmits a multiplexed framing packet over the USB accessory stream. */
     private fun send(kind: Int, id: Int, data: ByteArray) {
         val frame = ByteBuffer.allocate(HEADER + data.size)
             .put(kind.toByte()).put(id.toByte()).putInt(data.size).put(data).array()
@@ -172,12 +164,7 @@ class UsbTunnel(
         }
     }
 
-    /** The accessory's stream as the driver allows it: read in whole
-     * transfers (a smaller read loses the rest of one), never asked what is
-     * available (BufferedInputStream does: the driver says EINVAL), and read
-     * ahead on a thread of its own, so the PC's next transfer never waits for
-     * the packets of this one to be opened and decoded (that held the cable
-     * to some 5 MB/s). At most AHEAD transfers wait: then the PC does. */
+    /** Asynchronous read-ahead buffer draining accessory bulk transfers at display priority. */
     private class Transfers(private val input: FileInputStream) : InputStream() {
         private val ready = ArrayBlockingQueue<ByteArray>(AHEAD)
         @Volatile private var closed = false
@@ -203,7 +190,7 @@ class UsbTunnel(
             }, "screenlet-usb-read").start()
         }
 
-        /** Whether there is something to read, waiting for the next transfer. */
+        /** Advances to the next queued transfer buffer when current bytes are exhausted. */
         private fun fill(): Boolean {
             while (at == current.size) {
                 val next = ready.poll(100, TimeUnit.MILLISECONDS)

@@ -18,8 +18,7 @@ import com.google.android.material.materialswitch.MaterialSwitch
 import com.google.android.material.R as M
 
 /**
- * What the app is doing and what it may do: the service that waits for the
- * PC, the permission that lets its desktop open by itself, the paired PCs.
+ * Main user interface activity displaying companion status, configuration options, and paired hosts.
  */
 class MainActivity : AppCompatActivity() {
     private lateinit var content: LinearLayout
@@ -113,7 +112,7 @@ class MainActivity : AppCompatActivity() {
         }, LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT))
     }
 
-    /** Ready, and how the PC finds this tablet: the app's whole job in a card. */
+    /** Builds the primary status banner displaying device discoverability and pairing status. */
     private fun hero() = MaterialCardView(this, null, M.attr.materialCardViewFilledStyle).apply {
         setCardBackgroundColor(themeColor(M.attr.colorPrimaryContainer))
         radius = dp(28f)
@@ -139,9 +138,7 @@ class MainActivity : AppCompatActivity() {
         })
     }
 
-    /** What lets the app reach the user by itself (the pairing code, the
-     * PC's desktop), asked together and said why, while
-     * anything of it is missing; null once it is all there. */
+    /** Constructs the onboarding card prompting for required system permissions when incomplete. */
     private fun onboarding(): View? {
         val notifications = checkSelfPermission(Manifest.permission.POST_NOTIFICATIONS) ==
             PackageManager.PERMISSION_GRANTED

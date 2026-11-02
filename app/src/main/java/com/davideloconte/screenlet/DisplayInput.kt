@@ -12,13 +12,11 @@ import kotlin.math.sin
 import kotlin.math.tan
 
 /**
- * Fingers and the pen on the PC's desktop. Each packet says what is on the
- * screen now (the fingers down, the pen's samples since the last packet),
- * sent at every event as it happens (unbuffered dispatch: the digitizer's
- * rate, not the display's) and again every REPEAT ms while anything touches:
- * a packet lost costs a moment, never a finger stuck down on the PC.
- * Straight from the main thread into one buffer kept for it: no allocation
- * and no thread hop per event.
+ * Captures touchscreen multi-touch contact points and stylus digitizer events.
+ *
+ * Encodes active touch points and S Pen samples into binary input packets dispatched
+ * directly to the host over UDP, using unbuffered low-latency event delivery and periodic
+ * retransmission to prevent dropped release events.
  */
 class DisplayInput(private val view: View, private val session: () -> DisplaySession?) {
     private val packet = InputPacket()
@@ -98,14 +96,14 @@ class DisplayInput(private val view: View, private val session: () -> DisplaySes
         session.send(packet.bytes, packet.length)
     }
 
-    /** Fingers while the pen is near, or was a moment ago, are the hand holding it. */
+    /** Determines whether touch contacts should be suppressed as palm rejection due to stylus proximity. */
     private fun palm() = SystemClock.uptimeMillis() - penSeenAt < PALM_WINDOW
 
     private fun isPen(e: MotionEvent, i: Int) = e.getToolType(i).let {
         it == MotionEvent.TOOL_TYPE_STYLUS || it == MotionEvent.TOOL_TYPE_ERASER
     }
 
-    /** Pointer i at history h (-1: now) as a pen sample; a full packet goes first. */
+    /** Encodes a historical or current stylus motion event sample into the active packet buffer. */
     private fun pen(e: MotionEvent, i: Int, h: Int, tip: Boolean, inRange: Boolean) {
         fun axis(a: Int) = if (h < 0) e.getAxisValue(a, i) else e.getHistoricalAxisValue(a, i, h)
         val x = if (h < 0) e.getX(i) else e.getHistoricalX(i, h)
@@ -130,11 +128,7 @@ class DisplayInput(private val view: View, private val session: () -> DisplaySes
 }
 
 /**
- * One INPUT body, built in place: kind | fingers u8 | per finger id u8,
- * x u16, y u16 (0..65535 of the screen) | samples u8 | per sample the S Pen's
- * report after its ID, little-endian: bits u8 (tip 1, barrel 2, eraser 8,
- * in range 16), x u16, y u16 (0..32767), pressure u16 (0..4096), tilt x i8,
- * tilt y i8 (degrees). Plain Kotlin: tested on the JVM.
+ * Binary serializer assembling touch contact points and S Pen digitizer reports into wire format.
  */
 class InputPacket {
     val bytes = ByteArray(3 + MAX_FINGERS * 5 + MAX_SAMPLES * PEN_SAMPLE)
@@ -151,7 +145,7 @@ class InputPacket {
         length = 2
     }
 
-    /** A finger at x, y in 0..1 of the screen; before any pen sample. */
+    /** Encodes a normalized multi-touch contact point into the packet buffer. */
     fun finger(id: Int, x: Float, y: Float) {
         bytes[length] = id.toByte()
         u16be(length + 1, scale(x, TOUCH_MAX))
@@ -162,7 +156,7 @@ class InputPacket {
 
     fun full() = samples == MAX_SAMPLES
 
-    /** tilt: radians from upright; towards: radians, 0 up, pi/2 right (Android's). */
+    /** Encodes a stylus sample with normalized coordinates, pressure, and tilt angles. */
     fun pen(bits: Int, x: Float, y: Float, pressure: Float, tilt: Float, towards: Float) {
         if (samples == 0) { samplesAt = length; length++ }
         val tiltX = Math.toDegrees(atan(tan(tilt) * sin(towards)).toDouble())

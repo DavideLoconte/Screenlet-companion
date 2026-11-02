@@ -10,16 +10,13 @@ import java.util.concurrent.Executors
 import java.util.concurrent.TimeUnit
 
 /**
- * Messages between the PC and the app (PROTOCOL.md §2): a 4-byte
- * big-endian length and a JSON header of that length.
+ * Frames and transmits length-delimited JSON control messages across a stream socket.
  */
 class Wire(private val socket: Socket) {
     private val input = DataInputStream(BufferedInputStream(socket.getInputStream()))
     private val output = DataOutputStream(BufferedOutputStream(socket.getOutputStream()))
 
-    /** Sends header; a peer that stops reading gets the connection closed
-     * (a socket write has no timeout of its own, and it would hold this
-     * Wire, and whoever waits to answer on it, for ever). */
+    /** Serializes and transmits a JSON message header guarded by a watchdog write timeout. */
     fun send(header: JSONObject) = synchronized(output) {
         val bytes = header.toString().toByteArray()
         val guard = WATCHDOG.schedule({ socket.close() }, WRITE_TIMEOUT, TimeUnit.MILLISECONDS)
@@ -32,7 +29,7 @@ class Wire(private val socket: Socket) {
         }
     }
 
-    /** The next message's header, at most maxHeader bytes. */
+    /** Reads and parses the next length-prefixed JSON message header from the stream. */
     fun receive(maxHeader: Int = MAX_HEADER): JSONObject {
         val length = input.readInt()
         require(length in 1..maxHeader) { "bad header length $length" }
@@ -44,7 +41,7 @@ class Wire(private val socket: Socket) {
         const val UNPAIRED_HEADER = 4 * 1024          // hello and pairing: small
         const val WRITE_TIMEOUT = 30_000L             // ms for a message to go out
 
-        /** Closes sockets whose time is up (writes, handshakes). */
+        /** Scheduled executor enforcing timeout deadlines on stream socket operations. */
         val WATCHDOG = Executors.newSingleThreadScheduledExecutor { Thread(it, "screenlet-watchdog").apply { isDaemon = true } }
     }
 }

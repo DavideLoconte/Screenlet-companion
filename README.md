@@ -2,96 +2,86 @@
 
 # Screenlet Companion
 
-The Android app of Screenlet: it turns a tablet (made for the Samsung Galaxy
-Tab and its S Pen) into a second display for your computer, over Wi-Fi or a
-USB-C cable, with the lowest latency it can get. The computer runs
-[Screenlet for macOS](https://github.com/DavideLoconte/Screenlet-macos),
-[Screenlet for GNOME](https://github.com/DavideLoconte/Screenlet-linux) or
-[Screenlet for Windows](https://github.com/DavideLoconte/Screenlet-windows); they
-speak the [Screenlet protocol](PROTOCOL.md).
+*Screenlet Companion* is the Android client application for Screenlet. It transforms an Android tablet (specifically optimized for Samsung Galaxy Tab devices and the S Pen) into an ultra-low-latency secondary display for a desktop computer over Wi-Fi or a USB-C connection. The host computer runs [Screenlet for macOS](https://github.com/DavideLoconte/Screenlet-macos), [Screenlet for GNOME](https://github.com/DavideLoconte/Screenlet-linux), or [Screenlet for Windows](https://github.com/DavideLoconte/Screenlet-windows), communicating via the [Screenlet protocol](PROTOCOL.md).
 
-Screenlet started as a fork of
-[Plus One](https://github.com/GabrieleSantangelo/PlusOne).
+Screenlet originated as a fork of [Plus One](https://github.com/GabrieleSantangelo/PlusOne).
 
-**A proof of concept, not ready for daily use.** The version is in [VERSION](VERSION).
+> [!NOTE]
+> The current version is in development and prone to changes. The version number is specified in [VERSION](VERSION).
 
 ## Features
 
-- **Low latency.** Each frame goes to the hardware decoder (H.264 or HEVC)
-  as soon as its packets are in, with no jitter buffer, and Wi-Fi runs
-  without power saving while the desktop is shown.
-- **Touch and S Pen.** Every finger and every pen sample, with pressure,
-  tilt, hover and the barrel button, goes to the computer.
-- **USB cable, network or Wi-Fi Direct.** Over the cable (Android Open
-  Accessory) the app opens by itself, with no developer options; on the
-  network it announces itself with mDNS; with no network to share, it runs a
-  Wi-Fi Direct group the paired computer joins.
-- **Only your computer.** Paired once by a six-digit code on both screens,
-  TLS 1.3 on the link and AES-GCM on every video and input packet.
+- **Ultra-low latency.** Video frames are dispatched directly to the hardware decoder (H.264 or HEVC) as soon as all corresponding packets are received, avoiding intermediate jitter buffer delays. Wi-Fi power-saving mode is disabled while the display session is active.
+- **Full multi-touch and S Pen support.** Captures and forwards multi-touch digitizer events and pen samples, including coordinates, pressure, tilt, hover states, and barrel button events.
+- **Versatile connectivity (USB cable, local network, or Wi-Fi Direct).** Over USB (via the Android Open Accessory protocol), the application launches automatically without requiring developer options or USB debugging. Over a local network, the service is advertised via mDNS. In environments without an existing network infrastructure, the application hosts a standalone Wi-Fi Direct group for the host to join.
+- **Authenticated and encrypted transport.** Mutual authentication is completed once via a six-digit verification code displayed on both screens. Control connections are secured with TLS 1.3, while video and input datagrams are encrypted end-to-end using AES-GCM.
 
-## Latency
+## Latency Optimizations
 
-- Packets are opened into buffers the app keeps, and each video packet is
-  copied once, straight to its place in the frame: nothing allocated per packet.
-- A whole frame goes straight into a free decoder buffer, decoded with every
-  low-latency switch there is (Android's, Exynos', Qualcomm's, MediaTek's,
-  the highest operating rate), and shown at the next vsync.
-- The panel runs at its fastest refresh while the desktop is on screen.
-- Receiving, the cable and the decoder's callbacks run at display priority.
-- Touch and pen go out as the digitizer reports them, straight from the UI
-  thread into a buffer kept for them: no allocation, no thread hop.
+- Incoming packets are processed into pre-allocated application buffers, copying video payload data directly into the target frame memory without per-packet heap allocations.
+- Reconstructed frames are passed directly into available hardware decoder buffers, configured with low-latency operating parameters across supported chipsets (Android standard, Samsung Exynos, Qualcomm Snapdragon, and MediaTek) and presented at the next vertical sync (vsync).
+- The display panel operates at its maximum supported refresh rate while presenting the desktop.
+- Network reception, USB cable transfers, and decoder callback routines execute at display-thread priority.
+- Multi-touch and stylus events are dispatched immediately as reported by the digitizer, streaming directly from the UI thread using pre-allocated buffers without thread hopping.
 
-Each second the app measures five stages of every frame (capture to
-decoded, to the first packet, the frame's spread over the network, the wait
-for the decoder, the decoder) and sends them to the computer, which logs
-them with its own ([PROTOCOL.md](PROTOCOL.md) §3.5).
+Once per second, the application measures five latency metrics for each frame (capture-to-decoded, capture-to-first-packet, network packet transit spread, decoder queue delay, and hardware decode duration) and reports them back to the host computer, which records them alongside host-side timings ([PROTOCOL.md](PROTOCOL.md) §3.5).
 
-## How it works
+## Architecture
 
-| Part | Implementation |
+| Component | Implementation Details |
 |---|---|
-| Waiting for the computer | `CompanionService`: a foreground service, TLS server and mDNS (`_screenlet._tcp`) |
-| Pairing | `Pairing.kt`, `Identity.kt` (Android Keystore, EC P-256) |
-| Display | `DisplaySession`: AES-GCM packets in, MediaCodec out to a `SurfaceView` (`DisplayActivity`) |
-| Touch and pen | `DisplayInput` |
-| Cable | `UsbTunnel`: the computer's TLS connections and datagrams over one bulk stream each way |
+| Service discovery | `CompanionService`: A foreground service providing a TLS server and mDNS advertisement (`_screenlet._tcp`) |
+| Authentication | `Pairing.kt`, `Identity.kt`: Mutual authentication backed by the Android Keystore (EC P-256) |
+| Video pipeline | `DisplaySession`: AES-GCM payload decryption and `MediaCodec` decoding rendering to a `SurfaceView` (`DisplayActivity`) |
+| Input dispatch | `DisplayInput`: Real-time touch and stylus event forwarding |
+| USB transport | `UsbTunnel`: Multiplexes host TLS connections and display datagrams across bidirectional bulk USB endpoints |
 
-## Build
+## Building from Source
 
-Requires JDK 21 or later and the Android SDK (`ANDROID_HOME`, or
-`local.properties` with `sdk.dir`).
+### Requirements
+
+- JDK 21 or later.
+- Android SDK (configured via `ANDROID_HOME` or `sdk.dir` in `local.properties`).
+
+### Build and Installation
 
 ```bash
-./gradlew testDebugUnitTest lint assembleDebug     # app/build/outputs/apk/debug/app-debug.apk
+./gradlew testDebugUnitTest lint assembleDebug
 adb install app/build/outputs/apk/debug/app-debug.apk
 ```
 
-Measure latency with a release build, not the debug one: a debuggable app
-runs every call into native code (decryption, for one) with checks, which
-on a slow tablet costs several milliseconds a frame. `./gradlew
-assembleShrunk` makes a release build signed with the debug key, which
-installs over the debug one.
+> [!TIP]
+> Always evaluate latency using a release build. Debuggable builds introduce verification overhead on native calls (such as decryption routines), which can add several milliseconds of latency per frame on low-power tablet processors. Use `./gradlew assembleShrunk` to generate a minified release build signed with the debug key for testing.
 
-A release build (`assembleRelease`) is signed when `SCREENLET_KEYSTORE`,
-`SCREENLET_KEYSTORE_PASSWORD` and optionally `SCREENLET_KEY_ALIAS` are set.
-Dependencies are checked against `gradle/verification-metadata.xml`.
-Without a JDK or SDK here, `DOCKER=podman tools/android-docker.sh testDebugUnitTest
-assembleDebug` builds in a container. The unit tests check the shared protocol
-vectors (`vectors.json`) and each step of the receive path, and print its cost
-per packet. A `v*` tag publishes a release with the APK.
+A production release build (`assembleRelease`) is automatically signed when the environment variables `SCREENLET_KEYSTORE`, `SCREENLET_KEYSTORE_PASSWORD`, and optionally `SCREENLET_KEY_ALIAS` are configured. Dependencies are verified against `gradle/verification-metadata.xml`.
 
-On first launch, allow the notifications (for the pairing code) and
-"Display over other apps" (so the computer's desktop opens by itself).
+If a local JDK or Android SDK installation is not available, the project can be built inside a container:
 
-## Future work
+```bash
+DOCKER=podman tools/android-docker.sh testDebugUnitTest assembleDebug
+```
 
-- A computer on KDE, speaking the same protocol.
+Unit tests validate compatibility against shared protocol test vectors (`vectors.json`), verify the receive pipeline, and measure per-packet processing costs. Pushing a `v*` tag triggers a continuous integration release workflow that publishes the built APK.
+
+### Initial Configuration
+
+Upon launching the application for the first time, grant the requested notification permission (required for pairing verification) and enable "Display over other apps" (allowing the application to launch automatically when connected by the computer).
+
+## Roadmap
+
+- **Decoder optimization across diverse SoCs:** Mitigate decoder buffer queue inflation during high-motion scenes on non-Snapdragon and non-Exynos hardware (e.g., MediaTek and Unisoc chipsets, addressing frame pacing latency on devices such as the Bigme HiBreak Pro).
+- **Dynamic panel refresh rate synchronization:** Programmatically switch the display mode and `SurfaceView` refresh rate (e.g., 60 Hz, 90 Hz, or 120 Hz) to match host stream capture framerates, eliminating micro-stutters and vsync phase drift.
+- **Stylus motion prediction:** Integrate the Android 14+ `MotionPredictor` API to calculate predictive coordinate vectors, minimizing pen-to-ink latency during stylus drawing and note-taking.
+- **Universal stylus compatibility:** Broaden digitizer report parsing beyond Samsung S Pen vendor extensions to support Universal Stylus Initiative (USI) active pens and standard Android pointer tilt/pressure APIs.
+- **Resilient packet transport:** Implement MTU detection and telemetry for network environments that drop IP fragments of 16 KiB UDP datagrams, signaling hosts to fall back to unfragmented packets.
+- **Erasure coding loss recovery:** Investigate Forward Error Correction (FEC) schemes to reconstruct isolated dropped packets without generating full IDR keyframe burst requests.
+- **Low-latency audio sink:** Implement high-priority synchronized audio streaming over datagram transport using AAudio or Oboe for tablet speaker and headphone output.
+- **KDE Plasma compatibility:** Validate connection negotiation and pairing workflows with a future Linux host implementation for KDE Plasma.
 
 ## License
 
-MIT, like Plus One. See [LICENSE](LICENSE).
+Distributed under the [MIT License](LICENSE), matching the upstream Plus One project.
 
-## AI disclosure
+## AI Disclosure
 
-Much of this code was written by Claude, Anthropic's AI model, through Claude Code, under
-the author's direction. The author chose what to build and tested it on real hardware.
+Much of this codebase was generated with the assistance of Anthropic's Claude model through Claude Code, under direct human architectural guidance, specification, and hardware verification.
