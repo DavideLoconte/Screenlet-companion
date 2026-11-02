@@ -43,4 +43,4 @@ jobs:
       - name: Release
         env:
           GH_TOKEN: ${{ github.token }}
-        run: gh release create "$GITHUB_REF_NAME" --title "Screenlet Companion $GITHUB_REF_NAME" --generate-notes Screenlet-Companion-*.apk
+        run: gh release create "$GITHUB_REF_NAME" --prerelease --title "Screenlet Companion $GITHUB_REF_NAME" --generate-notes Screenlet-Companion-*.apk
