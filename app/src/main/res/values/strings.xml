@@ -19,7 +19,7 @@
     <string name="overlay_allow">Allow</string>
     <string name="heading_paired">Paired computers</string>
     <string name="paired_none_title">None yet</string>
-    <string name="paired_none">On your computer: Screenlet → Pair a tablet.</string>
+    <string name="paired_none">On your computer: Screenlet → Connect.</string>
     <string name="forget">Forget</string>
     <string name="forget_title">Forget %1$s?</string>
     <string name="forget_detail">To use it again, you will compare a code once more.</string>
@@ -32,7 +32,7 @@
     <string name="always_off">Off: your computer reaches this tablet only for 10 minutes after you open Screenlet.</string>
     <string name="ready">Ready</string>
     <string name="not_paired_title">Not paired yet</string>
-    <string name="status_unpaired">On your computer, open Screenlet, click Pair a tablet and choose “%1$s”.</string>
+    <string name="status_unpaired">On your computer, open Screenlet, click Connect and choose “%1$s”.</string>
     <string name="onboarding_title">Let Screenlet reach you</string>
     <string name="onboarding_text">So the pairing code and the computer\'s desktop appear by themselves, and the computer finds this tablet even with no Wi-Fi network, allow notifications, nearby devices and “Display over other apps”.</string>
 </resources>

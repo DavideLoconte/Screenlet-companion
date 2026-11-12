@@ -89,7 +89,10 @@ class CompanionService : Service() {
     /** Activates or deactivates Wi-Fi Direct group owner mode based on network availability. */
     private fun direct() = handler.post {
         if (stopped) return@post
-        val needed = wifiNetworks.isEmpty() && synchronized(this) { usb == null }
+        // Not for ever, even when always ready: a group left up away from home
+        // costs battery and names this tablet to everyone in range.
+        val inUse = busy.get() > 0 || System.currentTimeMillis() - lastUse <= IDLE_STOP
+        val needed = inUse && wifiNetworks.isEmpty() && synchronized(this) { usb == null }
         if (needed) WifiDirect.start(this) else WifiDirect.stop(this)
     }
 
@@ -114,6 +117,7 @@ class CompanionService : Service() {
             stopSelf()
             return
         }
+        direct()  // the group goes down once idle
         handler.postDelayed(::idleCheck, IDLE_CHECK)
     }
 
@@ -191,22 +195,34 @@ class CompanionService : Service() {
     fun accept(client: SSLSocket) {
         // Connections not through TLS yet, few at a time: strangers that
         // never finish their handshake cannot take every thread from a paired PC.
-        if (handshaking.incrementAndGet() > MAX_HANDSHAKING) {
-            handshaking.decrementAndGet()
+        // And fewer still from one address: one host on the network holding
+        // connections open cannot take every one of those.
+        val from = client.inetAddress?.hostAddress ?: ""
+        if (handshaking.incrementAndGet() > MAX_HANDSHAKING ||
+            shakingFrom.merge(from, 1, Int::plus)!! > MAX_HANDSHAKING_EACH) {
+            shaken(from)
             runCatching { client.close() }
             return
         }
         try {
-            connections.execute { handle(client) }
+            connections.execute { handle(client, from) }
         } catch (e: RejectedExecutionException) {
-            handshaking.decrementAndGet()
+            shaken(from)
             runCatching { client.close() }
         }
     }
 
+    /** Frees the handshake slot of a connection from that address. */
+    private fun shaken(from: String) {
+        handshaking.decrementAndGet()
+        shakingFrom.computeIfPresent(from) { _, n -> if (n > 1) n - 1 else null }
+    }
+
     /** Opens an Android USB accessory endpoint and initiates the multiplexing tunnel. */
     private fun openUsb(accessory: UsbAccessory) {
-        val fd = getSystemService(UsbManager::class.java).openAccessory(accessory)
+        // It throws, not null, for an accessory pulled out since or never allowed
+        // (UsbActivity is open to other apps).
+        val fd = try { getSystemService(UsbManager::class.java).openAccessory(accessory) } catch (e: Exception) { null }
         if (fd == null) {
             Log.w(TAG, "usb: the accessory could not be opened")
             return
@@ -264,7 +280,7 @@ class CompanionService : Service() {
     }
 
     /** Processes an established client TLS connection, performing handshake and message dispatch. */
-    private fun handle(socket: SSLSocket) {
+    private fun handle(socket: SSLSocket, from: String) {
         busy.incrementAndGet()
         lastUse = System.currentTimeMillis()
         var stranger = false  // counted in unpaired: not (yet) a paired PC
@@ -278,8 +294,11 @@ class CompanionService : Service() {
                 // peers at a time (a paired PC is never turned away for them).
                 val guard = Wire.WATCHDOG.schedule({ socket.close() }, HANDSHAKE_DEADLINE, TimeUnit.MILLISECONDS)
                 socket.soTimeout = HANDSHAKE_TIMEOUT
+                // TLS alone takes a computer milliseconds: its slot is not held for long.
+                val tls = Wire.WATCHDOG.schedule({ socket.close() }, TLS_DEADLINE, TimeUnit.MILLISECONDS)
                 socket.startHandshake()
-                handshaking.decrementAndGet()
+                tls.cancel(false)
+                shaken(from)
                 shaking = false
                 val pc = socket.session.peerCertificates[0].encoded
                 fingerprint = Identity.fingerprint(pc)
@@ -336,7 +355,7 @@ class CompanionService : Service() {
             // stack, and an uncaught Error on a pool thread ends the process.
             Log.i(TAG, "connection ended: $e")
         } finally {
-            if (shaking) handshaking.decrementAndGet()
+            if (shaking) shaken(from)
             if (stranger) unpaired.decrementAndGet()
             fingerprint?.let { links[it]?.remove(socket) }
             busy.decrementAndGet()
@@ -346,6 +365,7 @@ class CompanionService : Service() {
 
     // Connections still in their TLS handshake, and each paired PC's open links.
     private val handshaking = AtomicInteger()
+    private val shakingFrom = ConcurrentHashMap<String, Int>()  // by the peer's address
     private val links = ConcurrentHashMap<String, MutableSet<SSLSocket>>()
 
     /** Terminates all active connections associated with a forgotten host identity. */
@@ -490,9 +510,11 @@ class CompanionService : Service() {
         const val PORT = 47236                 // the default; another if it is taken
         const val MAX_CONNECTIONS = 32
         const val MAX_UNPAIRED = 4             // connections of peers not yet known, at a time
-        const val MAX_HANDSHAKING = 8          // connections still in their TLS handshake, at a time
+        const val MAX_HANDSHAKING = 16         // connections still in their TLS handshake, at a time
+        const val MAX_HANDSHAKING_EACH = 2     // of those, from one address
         const val LISTEN_RETRY = 30_000L       // ms before trying to listen again
         const val HANDSHAKE_DEADLINE = 20_000L // ms for an unknown peer's whole handshake
+        const val TLS_DEADLINE = 3_000L        // ms of those for TLS itself
         const val HANDSHAKE_TIMEOUT = 20_000   // ms for TLS, hello and the pairing messages
         /** Supported video codecs mapped to Android MIME types. */
         val CODECS = mapOf(
@@ -506,7 +528,7 @@ class CompanionService : Service() {
         const val PAIRED_TIMEOUT = 90_000      // ms without a word from a paired PC
         const val SILENT_PC = 15_000           // ms without a ping during a display session
         const val IDLE_CHECK = 60_000L       // ms
-        const val IDLE_STOP = 10 * 60_000L   // ms without a PC when not always ready
+        const val IDLE_STOP = 10 * 60_000L   // ms without a PC: the service stops when not always ready, Wi-Fi Direct always
         const val USB_REOPEN_WAIT = 500L     // ms between looks for the accessory after its stream broke
         const val USB_REOPEN_TRIES = 6
         const val USB_STATE = "android.hardware.usb.action.USB_STATE"  // UsbManager's, hidden

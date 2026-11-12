@@ -5,7 +5,7 @@ import javax.crypto.spec.GCMParameterSpec
 import javax.crypto.spec.SecretKeySpec
 
 /**
- * Encrypts and decrypts datagram packets using AES-128-GCM authentication.
+ * Encrypts and decrypts datagram packets using AES-256-GCM authentication.
  *
  * Each encrypted packet includes a 12-byte nonce containing stream direction and sequence number,
  * followed by ciphertext and a 16-byte authentication tag. Maintains replay protection state

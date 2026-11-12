@@ -35,6 +35,7 @@ class UsbTunnel(
 
     fun start() {
         Thread(::receive, "screenlet-usb-in").start()
+        Thread(::reply, "screenlet-usb-out").start()
     }
 
     fun stop() {
@@ -47,14 +48,24 @@ class UsbTunnel(
     }
 
     private val datagram = ByteArray(65536)
-    private val replyFrame = ByteArray(HEADER + 2048)
+    // From DisplaySession.send, the UI thread's touches among them: never the
+    // cable's write there, which waits for as long as the PC does not read.
+    // Datagrams: the ones a full queue has no room for are lost, as on a network.
+    private val replies = ArrayBlockingQueue<ByteArray>(REPLIES)
     private val reply: (ByteArray, Int) -> Unit = { packet, n ->
-        // From DisplaySession.send (under its lock): one frame, no allocation.
-        replyFrame[0] = DATAGRAM.toByte()
-        replyFrame[1] = 0
-        Sealed.writeInt(replyFrame, 2, n)
-        System.arraycopy(packet, 0, replyFrame, HEADER, n)
-        write(replyFrame, HEADER + n)
+        val frame = ByteArray(HEADER + n)
+        frame[0] = DATAGRAM.toByte()
+        Sealed.writeInt(frame, 2, n)
+        System.arraycopy(packet, 0, frame, HEADER, n)
+        replies.offer(frame)
+    }
+
+    private fun reply() {
+        Process.setThreadPriority(Process.THREAD_PRIORITY_URGENT_DISPLAY)  // the pen's packets go this way
+        while (running) {
+            val frame = replies.poll(1, java.util.concurrent.TimeUnit.SECONDS) ?: continue
+            write(frame, frame.size)
+        }
     }
 
     private fun receive() {
@@ -229,6 +240,7 @@ class UsbTunnel(
         const val CLOSE = 3
         const val DATAGRAM = 4
         const val HEADER = 6
+        const val REPLIES = 64  // datagrams waiting for the cable
         const val CHUNK = 16 * 1024          // bytes of a pipe read, one frame
         const val BUFFER = 16 * 1024         // the accessory's reads: its driver's transfer size (more: EINVAL)
         const val AHEAD = 64                 // transfers read ahead, at most: 1 MiB

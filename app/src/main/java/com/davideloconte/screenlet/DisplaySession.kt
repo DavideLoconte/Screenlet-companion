@@ -48,6 +48,7 @@ class DisplaySession(key: ByteArray, private val pc: InetAddress, private var pc
     private class Waiting(var data: ByteArray, var size: Int = 0, var number: Long = 0, var keyframe: Boolean = false)
     @Volatile private var needKeyframe = true
     private var askedAt = 0L
+    private var askGap = KEYFRAME_AGAIN  // ns before asking again
 
     var onEnd: (() -> Unit)? = null
     fun end() = onEnd?.invoke()
@@ -144,6 +145,7 @@ class DisplaySession(key: ByteArray, private val pc: InetAddress, private var pc
         codec = decoder
         needKeyframe = true
         askedAt = 0L
+        askGap = KEYFRAME_AGAIN
     } }
 
     /** Computes maximum supported dimensions for the decoder clamped to upper capability limits. */
@@ -158,7 +160,7 @@ class DisplaySession(key: ByteArray, private val pc: InetAddress, private var pc
     }.apply {
         setInteger(MediaFormat.KEY_LOW_LATENCY, 1)
         setInteger(MediaFormat.KEY_PRIORITY, 0)
-        setInteger(MediaFormat.KEY_MAX_INPUT_SIZE, 2 shl 20)
+        setInteger(MediaFormat.KEY_MAX_INPUT_SIZE, Frames.MAX_FRAME)
         if (fast) {
             setInteger(MediaFormat.KEY_OPERATING_RATE, Short.MAX_VALUE.toInt())
             setInteger("vendor.qti-ext-dec-low-latency.enable", 1)
@@ -234,7 +236,10 @@ class DisplaySession(key: ByteArray, private val pc: InetAddress, private var pc
             return
         }
         if (needKeyframe && !frame.keyframe) return askKeyframe()
-        if (frame.keyframe) needKeyframe = false
+        if (frame.keyframe) {
+            needKeyframe = false
+            askGap = KEYFRAME_AGAIN
+        }
         timing.complete(frame.number, frame.captured, frame.first, frame.complete)
         // Straight into a free input buffer: the one copy left.
         val index = synchronized(pending) { if (pending.isEmpty()) free.poll() else null }
@@ -301,8 +306,10 @@ class DisplaySession(key: ByteArray, private val pc: InetAddress, private var pc
 
     private fun askKeyframe() {
         val now = System.nanoTime()
-        if (now - askedAt < KEYFRAME_AGAIN) return
+        if (now - askedAt < askGap) return
         askedAt = now
+        // Less often while none comes whole: each is a burst on a link that already loses packets.
+        askGap = minOf(askGap * 2, KEYFRAME_AGAIN_MAX)
         send(byteArrayOf(KEYFRAME), 1)
     }
 
@@ -360,6 +367,7 @@ class DisplaySession(key: ByteArray, private val pc: InetAddress, private var pc
         const val MAX_WIDTH = 3840
         const val MAX_HEIGHT = 2400
         const val KEYFRAME_AGAIN = 250_000_000L  // ns
+        const val KEYFRAME_AGAIN_MAX = 2_000_000_000L  // ns, after asking in vain
         const val MAX_RESTARTS = 3
         const val HIDDEN_PING_EVERY = 10        // ticks (seconds)
         const val MAX_PENDING = 3               // whole frames waiting for the decoder: 50 ms at 60 fps

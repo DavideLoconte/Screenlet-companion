@@ -1,6 +1,7 @@
 # A v* tag publishes a release with the APK, signed with the key in the
 # secrets (SCREENLET_KEYSTORE_BASE64, SCREENLET_KEYSTORE_PASSWORD,
-# SCREENLET_KEY_ALIAS), or with a debug key when there is none.
+# SCREENLET_KEY_ALIAS). Never with a debug key: the runner makes a new one
+# each time, and Android refuses an update signed with another key.
 name: Release
 
 on:
@@ -30,15 +31,11 @@ jobs:
           SCREENLET_KEYSTORE_PASSWORD: ${{ secrets.SCREENLET_KEYSTORE_PASSWORD }}
           SCREENLET_KEY_ALIAS: ${{ secrets.SCREENLET_KEY_ALIAS }}
         run: |
-          if [ -n "$KEYSTORE_BASE64" ]; then
-            echo "$KEYSTORE_BASE64" | base64 -d > "$RUNNER_TEMP/release.p12"
-            export SCREENLET_KEYSTORE="$RUNNER_TEMP/release.p12"
-            ./gradlew --no-daemon --console=plain testDebugUnitTest assembleRelease
-            cp app/build/outputs/apk/release/app-release.apk "Screenlet-Companion-$GITHUB_REF_NAME.apk"
-          else
-            ./gradlew --no-daemon --console=plain testDebugUnitTest assembleShrunk
-            cp app/build/outputs/apk/shrunk/app-shrunk.apk "Screenlet-Companion-$GITHUB_REF_NAME.apk"
-          fi
+          [ -n "$KEYSTORE_BASE64" ] || { echo "no SCREENLET_KEYSTORE_BASE64 secret: no release without its key"; exit 1; }
+          echo "$KEYSTORE_BASE64" | base64 -d > "$RUNNER_TEMP/release.p12"
+          export SCREENLET_KEYSTORE="$RUNNER_TEMP/release.p12"
+          ./gradlew --no-daemon --console=plain testDebugUnitTest assembleRelease
+          cp app/build/outputs/apk/release/app-release.apk "Screenlet-Companion-$GITHUB_REF_NAME.apk"
 
       - name: Release
         env:

@@ -66,7 +66,8 @@ class Frames(private val clock: () -> Long = System::nanoTime) {
         val isLast = index == count - 1
         if (!isLast) {
             if (frame.unit == 0) {
-                if (bytes == 0) return null
+                // The computer's word for it, not ours: no buffer past what the decoder takes.
+                if (bytes == 0 || count.toLong() * bytes > MAX_FRAME) return null
                 frame.unit = bytes
                 frame.room(count * bytes)
                 if (frame.lastSize >= 0) {  // the last one came first: in its place now
@@ -102,6 +103,7 @@ class Frames(private val clock: () -> Long = System::nanoTime) {
     companion object {
         const val HEADER = 18
         const val MAX_PAYLOAD = 65536 - HEADER
+        const val MAX_FRAME = 2 shl 20  // bytes: the decoder's KEY_MAX_INPUT_SIZE
         const val SLOTS = 8
     }
 }

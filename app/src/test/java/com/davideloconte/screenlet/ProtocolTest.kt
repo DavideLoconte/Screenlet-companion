@@ -114,6 +114,17 @@ class ProtocolTest {
         assertNull(frames.add(a[1], a[1].size))  // too late now
     }
 
+    @Test fun aFrameLargerThanTheDecoderTakesIsRefused() {
+        val b = ByteArray(Frames.HEADER + 9000)
+        b[0] = DisplaySession.VIDEO
+        Sealed.writeInt(b, 2, 1)
+        b[8] = 0xff.toByte(); b[9] = 0xff.toByte()  // 65535 packets of 9000 bytes
+        val frames = Frames()
+        assertNull(frames.add(b, b.size))
+        b[7] = 5  // past 2^31: no overflow either, that would place this one outside the buffer
+        assertNull(frames.add(b, Frames.HEADER + 65000))
+    }
+
     @Test fun aPacketOfAnotherSizeThanTheFramesIsRefused() {
         val p = packets(1, ByteArray(5000), unit = SMALL)
         val frames = Frames()

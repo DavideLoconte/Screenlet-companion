@@ -37,7 +37,9 @@ The computer picks the path by itself, in this order:
    its own, and a computer that learned its credentials (§2.1) MAY join it
    as an ordinary Wi-Fi network and connect to the group owner's address.
    The app starts the group only while it is on no Wi-Fi network and has no
-   cable: the group's radio time would slow a Wi-Fi network down.
+   cable: the group's radio time would slow a Wi-Fi network down. It keeps
+   it for 10 minutes after the app was opened or a computer left, not for
+   ever: the user opens the app on the tablet before the computer joins.
 
 ## Implementation map
 
